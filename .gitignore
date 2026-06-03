@@ -1,0 +1,6 @@
+.env
+cookie.txt
+.stock-watcher-state/
+logs/
+__pycache__/
+*.pyc
