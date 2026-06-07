@@ -1,5 +1,5 @@
 ---
-name: "stock-watcher"
+name: "stock-watcher-pro"
 version: "2.0.0"
 description: "东方财富自选股公告追踪。三级过滤 + LLM分类摘要 + Web仪表盘，支持 agent 定时推送。"
 metadata:
