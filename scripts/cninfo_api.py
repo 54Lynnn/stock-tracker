@@ -13,9 +13,11 @@ API:
   PDF 链接: http://static.cninfo.com.cn/{adjunctUrl}
 """
 
+import json
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Optional
 
@@ -23,8 +25,8 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-CNINFO_QUERY_URL = "http://www.cninfo.com.cn/new/hisAnnouncement/query"
-CNINFO_PDF_BASE = "http://static.cninfo.com.cn/"
+CNINFO_QUERY_URL = "https://www.cninfo.com.cn/new/hisAnnouncement/query"
+CNINFO_PDF_BASE = "https://static.cninfo.com.cn/"
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -43,7 +45,7 @@ def _parse_date(ts) -> str:
         if isinstance(ts, (int, float)):
             return datetime.fromtimestamp(ts / 1000).strftime("%Y-%m-%d")
         return str(ts)[:10]
-    except Exception:
+    except (TypeError, ValueError, OSError):
         return str(ts)[:10]
 
 
@@ -124,14 +126,15 @@ def fetch_cninfo_announcements(
                     "art_code": adjunct_url.replace("finalpage/", "").replace(".PDF", "").replace("/", "_"),
                     "notice_id": str(a.get("announcementId", "")),
                     "pdf_url": pdf_url,
+                    "market": "A股",
                 })
 
-            if not data.get("hasMore"):
+            if not data.get("hasMore") or page >= 20:
                 break
             page += 1
             time.sleep(0.3)
 
-        except Exception as e:
+        except (requests.RequestException, json.JSONDecodeError) as e:
             logger.warning("巨潮查询失败 stock=%s: %s", stock_code, e)
             break
 
@@ -142,17 +145,9 @@ def fetch_all_cninfo(
     stocks: list[dict],
     days_back: int = 7,
     delay: float = 0.5,
+    max_workers: int = 5,
 ) -> list[dict]:
-    """批量从巨潮资讯网获取所有自选股的公告
-
-    Args:
-        stocks: 自选股列表 [{"code":..., "name":..., ...}]
-        days_back: 回溯天数
-        delay: 股票间请求间隔（秒）
-
-    Returns:
-        合并的公告列表
-    """
+    """批量从巨潮资讯网获取所有自选股的公告（并发）"""
     from datetime import timedelta
     end = datetime.now()
     start = end - timedelta(days=days_back)
@@ -160,22 +155,29 @@ def fetch_all_cninfo(
     end_date = end.strftime("%Y-%m-%d")
 
     all_anns = []
-    for i, stock in enumerate(stocks):
+    total = len(stocks)
+
+    def _fetch_one(stock):
         code = stock["code"]
         name = stock.get("name", code)
-        logger.info(
-            "巨潮查询 [%d/%d] %s(%s)...", i + 1, len(stocks), name, code
-        )
         anns = fetch_cninfo_announcements(
             stock_code=code,
             stock_name=name,
             start_date=start_date,
             end_date=end_date,
         )
-        logger.info("  -> %d 条公告", len(anns))
-        all_anns.extend(anns)
-        if i < len(stocks) - 1:
-            time.sleep(delay)
+        logger.info("巨潮 %s(%s): %d 条", name, code, len(anns))
+        return anns
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_fetch_one, s): s for s in stocks}
+        for i, future in enumerate(as_completed(futures)):
+            stock = futures[future]
+            try:
+                anns = future.result()
+                all_anns.extend(anns)
+            except (requests.RequestException, json.JSONDecodeError, KeyError, TypeError) as e:
+                logger.warning("巨潮查询失败 %s: %s", stock.get("name", ""), e)
 
     logger.info("巨潮公告共获取 %d 条", len(all_anns))
     return all_anns

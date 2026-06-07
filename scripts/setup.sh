@@ -103,8 +103,8 @@ fi
 # 4. 设置 crontab
 echo ""
 echo "[5/5] 设置定时任务（每天 9:00 和 15:00 北京时间）..."
-CRON_CMD_1="0 1 * * * cd $SKILL_DIR && $PYTHON $SCRIPT_DIR/stock_watcher.py --source cninfo --group 持仓 --days 15 >> $SKILL_DIR/logs/stock_watcher.log 2>&1"
-CRON_CMD_2="0 7 * * * cd $SKILL_DIR && $PYTHON $SCRIPT_DIR/stock_watcher.py --source cninfo --group 持仓 --days 15 >> $SKILL_DIR/logs/stock_watcher.log 2>&1"
+CRON_CMD_1="0 1 * * * cd $SKILL_DIR && $PYTHON $SCRIPT_DIR/stock_watcher.py --source cninfo --group 持仓 --days 15 --fetch-content >> $SKILL_DIR/logs/stock_watcher.log 2>&1"
+CRON_CMD_2="0 7 * * * cd $SKILL_DIR && $PYTHON $SCRIPT_DIR/stock_watcher.py --source cninfo --group 持仓 --days 15 --fetch-content >> $SKILL_DIR/logs/stock_watcher.log 2>&1"
 
 EXISTING=$(crontab -l 2>/dev/null || true)
 

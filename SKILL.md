@@ -1,214 +1,209 @@
 ---
 name: "stock-watcher"
-description: "Tracks latest announcements of self-selected stocks from EastMoney (东方财富). Invoke when user wants to monitor their zixuan (自选股) stock announcements or set up automated tracking via cron."
+version: "2.0.0"
+description: "东方财富自选股公告追踪。三级过滤 + LLM分类摘要 + Web仪表盘，支持 agent 定时推送。"
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "📊",
+        "requires": { "python": "3.9+" },
+        "install":
+          [
+            {
+              "id": "deps",
+              "kind": "shell",
+              "command": "cd {{SKILL_DIR}} && pip install requests pdfplumber flask",
+              "label": "Install Python dependencies",
+            },
+          ],
+      },
+  }
 ---
 
-# Stock Watcher - 东方财富自选股公告追踪
+# 📊 Stock Watcher - 东方财富自选股公告追踪
 
-自动追踪东方财富网页版自选板块中所有自选股的最新公告，支持定时运行（如每天两次）并通过多种方式通知用户。
+**双模式技能** — Agent 定时自动追踪 + 用户 Web 仪表盘查看。
 
-## 功能特性
+## 模式一：Agent Run 模式
 
-- 自动从 [自选股页面](https://quote.eastmoney.com/zixuan/lite.html) 获取自选股列表
-- 支持按分组筛选（如 `--group 持仓` 只追踪指定分组）
-- 抓取每只自选股的最新公告
-- **三级过滤**：正则 → LLM 标题价值判断 → prune_empty 清理
-- **SQLite 数据库**：公告状态和全文持久化，支持按股票/日期查询历史公告
-- 支持定时任务（每天 9:00 和 15:00 各运行一次）
-- 支持多种通知方式：飞书/钉钉 Webhook、终端输出
-
-## 自选股获取原理
-
-脚本从 `https://quote.eastmoney.com/zixuan/lite.html` 使用的 `myfavor.eastmoney.com` API 获取自选股，三级回退：
-
-1. **myfavor API**（优先）：调用 `myfavor.eastmoney.com/v4/webouter` 接口获取分组及股票列表，只需 Cookie 中带登录态即可
-2. **Cookie 解析**（兜底）：从 Cookie 的 `selfSelectStocks` 字段解析
-3. **config.json 手动配置**：如果以上都失败，从配置文件加载
-
-## 使用前提
-
-1. **Python 3.8+** 环境
-2. 东方财富网页版登录后的 **Cookie**（用于调用 myfavor API）
-3. 安装依赖：`pip install requests pdfplumber`
-
-## 获取 Cookie
-
-1. 用浏览器打开并登录 [https://quote.eastmoney.com/zixuan/lite.html](https://quote.eastmoney.com/zixuan/lite.html)
-2. 确保页面右上角显示你的用户名（已登录状态）
-3. 按 F12 → Console → 输入 `copy(document.cookie)` 回车
-4. Ctrl+V 粘贴到 `cookie.txt` 文件
-5. **注意**：Cookie 会过期（几天到几周），过期后需重新获取
-
-### Cookie 过期自动续签
-
-如果 Cookie 过期，优先尝试自动续签（无需手动操作）：
+Agent 定时运行 `run.sh`，自动抓取公告、生成摘要，输出有价值公告的 digest 转发给用户。
 
 ```bash
-python scripts/refresh_cookie.py
+# 用法: bash run.sh [group] [days] [source]
+bash run.sh mygroup 15 eastmoney
 ```
 
-脚本会通过 Playwright 浏览器访问东财页面，尝试续签 Cookie 并自动验证有效性。
-> 依赖：需要安装 `playwright` 库（`pip install playwright && playwright install chromium`）
+### 输出示例
 
-如果自动续签失败，说明服务器端 session 已失效，再按上述步骤手动复制 Cookie。
+**有公告时：**
+```
+DIGEST_TOTAL:3
+1.
+【000001平安银行】-【平安银行2026年第一季度报告】
+【季度报告】...
 
-## LLM 配置（可选）
+2.
+【600519贵州茅台】-【贵州茅台关于回购股份的进展公告】
+累计回购金额XX亿元...
+```
 
-要启用 LLM 标题价值判断，需要：
+**无公告时：**
+```
+DIGEST_EMPTY:最近1天test板块无高价值公告
+```
 
-1. 在 `.env` 文件中配置 API Key：
-   ```
-   LLM_API_KEY=sk-your-api-key
-   ```
-2. 在 `config.json` 中配置 LLM 参数：
-   ```json
-   {
-     "llm": {
-       "enabled": true,
-       "base_url": "https://opencode.ai/zen/go/v1",
-       "model": "deepseek-v4-flash",
-       "timeout": 15,
-       "retries": 2
-     }
-   }
-   ```
+### 配置定时任务
 
-> 未配置 API Key 时，LLM 功能自动禁用，仅使用正则过滤，不影响正常运行。
+告诉 agent 即可：
 
-**支持的模型：** 任何兼容 OpenAI 接口且支持 `response_format: {"type": "json_object"}` 的模型均可使用。
+> "帮我设置 stock-watcher 定时任务，每天早上8点运行一次，追踪【xx】板块的最新公告，有重要公告通知我"
 
-## 使用方法
-
-### 手动运行
+或者手动配置：
 
 ```bash
-# 完整流程（推荐）
-python scripts/stock_watcher.py --source cninfo --group 持仓 --days 15 --fetch-content
-
-# 基础运行 - 追踪所有自选股最近7天公告
-python scripts/stock_watcher.py
-
-# 只追踪指定分组（如"持仓"）
-python scripts/stock_watcher.py --group 持仓
-
-# 列出所有可用分组
-python scripts/stock_watcher.py --list-groups
-
-# 查看数据库统计
-python scripts/stock_watcher.py --stats
-
-# 查看最近公告历史
-python scripts/stock_watcher.py --list
-
-# 查看某只股票的历史公告
-python scripts/stock_watcher.py --list --stock 600519 --days 30
+openclaw cron add \
+  --name stock-watcher \
+  --cron "0 1 * * *" \
+  --message "运行股票公告扫描：cd {{SKILL_DIR}} && bash run.sh mygroup 15 eastmoney"
 ```
 
-公告状态存储在 SQLite 数据库中（`.stock-watcher-state/announcements.db`），支持按股票代码、日期范围查询。
+---
 
-### 设置定时任务（每天两次）
+## 模式二：Dashboard 模式
 
-编辑 crontab：
+用户手动运行，抓取公告 + 生成摘要 + 启动 Web 仪表盘，浏览器查看所有公告详情。
 
 ```bash
-crontab -e
+# 用法: bash dashboard.sh [group] [days] [source]
+bash dashboard.sh mygroup 15 eastmoney
 ```
 
-添加以下两行（分别在北京时间 9:00 和 15:00 运行）：
+脚本自动执行三步：
+1. `stock_watcher.py --fetch-content` — 抓取公告 + 全文 + LLM 分类
+2. `daily_summary.py` — 生成摘要
+3. `dashboard.py` — 启动 Flask 仪表盘（默认端口 5001）
 
-```cron
-0 1 * * * cd /path/to/stock-watcher && python scripts/stock_watcher.py --source cninfo --group 持仓 --days 15 >> logs/stock_watcher.log 2>&1
-0 7 * * * cd /path/to/stock-watcher && python scripts/stock_watcher.py --source cninfo --group 持仓 --days 15 >> logs/stock_watcher.log 2>&1
+启动后浏览器访问 `http://localhost:5001`，按 Ctrl+C 停止。
+
+**仪表盘功能：**
+- 股票列表表格：7天/15天/30天/全部的有价值公告比例
+- 点击展开：懒加载公告详情（标题、日期、摘要、正文、原文链接）
+- 类型标签：`大类 / 小类`（如 `股权股本类 / 回购`）
+- 搜索过滤，响应式设计
+
+---
+
+## 工具命令
+
+不通过 `run.sh` / `dashboard.sh`，直接操作数据库或查看数据：
+
+```bash
+python3 scripts/stock_watcher.py --stats              # 数据库统计
+python3 scripts/stock_watcher.py --list               # 最近公告
+python3 scripts/stock_watcher.py --list --stock 600519 --days 30  # 指定股票
+python3 scripts/stock_watcher.py --list-groups        # 可用分组
+python3 scripts/stock_watcher.py --clean              # 清洗已有正文
+python3 scripts/stock_watcher.py --prune              # 清理无正文的空记录
 ```
 
-> **注意**：服务器通常使用 UTC 时间，北京时间 UTC+8，所以 9:00 = UTC 1:00，15:00 = UTC 7:00。
+---
 
-## 通知配置
+## 首次设置
 
-编辑 `config.json`：
+### 1. 安装依赖
+
+```bash
+cd ~/.openclaw/workspace/skills/stock-watcher
+pip install requests pdfplumber flask
+```
+
+### 2. 配置 Cookie
+
+东方财富网页版登录后的 Cookie，用于获取自选股列表。
+
+1. 浏览器打开 [https://quote.eastmoney.com/zixuan/lite.html](https://quote.eastmoney.com/zixuan/lite.html) 并登录
+2. F12 → Console → 输入 `copy(document.cookie)` 回车
+3. 粘贴到 `cookie.txt`
+
+**自动续签（可选）：**
+```bash
+pip install playwright && playwright install chromium
+python3 scripts/refresh_cookie.py
+```
+
+### 3. 配置 LLM（可选）
+
+LLM 用于标题价值判断、公告分类和摘要生成。未配置时仅使用正则过滤。
+
+```bash
+# .env 文件
+echo "LLM_API_KEY=sk-your-api-key" > .env
+```
 
 ```json
+// config.json
 {
-  "notify": {
-    "type": "webhook",
-    "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/your-webhook-id"
-  },
-  "fetch_interval_days": 7
+  "llm": {
+    "enabled": true,
+    "base_url": "https://opencode.ai/zen/go/v1",
+    "model": "deepseek-v4-flash",
+    "timeout": 60,
+    "retries": 2
+  }
 }
 ```
 
-支持的通知类型：
-- `terminal`：终端输出（默认）
-- `webhook`：飞书/钉钉机器人 Webhook
+### 4. 验证运行
 
-## 文件结构
-
-```
-.trae/skills/stock-watcher/
-  SKILL.md                        # 本 Skill 定义
-  config.json                     # 通知 + LLM 配置
-  cookie.txt                      # 东方财富 Cookie（登录态）
-  .env                            # LLM API Key（敏感信息，不进 git）
-  .gitignore                      # 排除 .env
-  scripts/
-    stock_watcher.py              # 主脚本入口
-    eastmoney_api.py              # 东方财富 API 封装
-    cninfo_api.py                 # 巨潮资讯网公告获取
-    ann_detail.py                 # 公告正文抓取 + 提取目录
-    llm_judge.py                  # LLM 标题价值判断
-    text_cleaner.py               # 公告正文清洗（移除模板套话）
-    db.py                         # SQLite 数据库模块
-    refresh_cookie.py             # Cookie 自动续签工具
-    setup.sh                      # 环境配置脚本
-  logs/                           # 运行日志
-.trae/skills/.stock-watcher-state/
-  announcements.db                # SQLite 公告数据库（自动管理）
+```bash
+python3 scripts/stock_watcher.py --group test --days 15 --fetch-content
+python3 scripts/stock_watcher.py --stats
 ```
 
-## 公告正文提取策略
+### 5. 配置定时任务
 
-### 三级过滤流程
+告诉 agent 即可，例如：
 
+> "帮我设置 stock-watcher 定时任务，每天早上8点运行一次，追踪【xx】板块的最新公告，有重要公告通知我"
+
+或者手动配置：
+
+```bash
+openclaw cron add \
+  --name stock-watcher \
+  --cron "0 1 * * *" \
+  --message "运行股票公告扫描：cd {{SKILL_DIR}} && bash run.sh mygroup 15 eastmoney"
 ```
-公告标题 → 正则过滤（SKIP_CONTENT_PATTERNS，零成本）
-         → LLM 标题价值判断（可选，Semantic 判断）
-         → 下载 PDF + 提取全文（高成本）
-```
 
-### 全文提取 vs 目录提取
+---
 
-对不同类型公告采用不同的提取策略：
+## 配置参数
 
-| 文档类型 | 策略 | 说明 |
-|---------|------|------|
-| 普通公告（<5000字） | 全文提取 + 清洗 | 短公告，完整正文存入 `clean_text` |
-| 股东会通函 | **只提取目录** | `clean_text` 仅存目录/提案列表，`attach_url` 保留 PDF 链接 |
-| 海外市场/监管公告 | **只提取目录** | 同上 |
-| 股东会会议资料 | **只提取目录** | 同上 |
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `config.json` → `llm.enabled` | `true` | 是否启用 LLM |
+| `config.json` → `llm.model` | `deepseek-v4-flash` | LLM 模型 |
+| `.env` → `LLM_API_KEY` | （需设置） | LLM API Key |
+| `cookie.txt` | （需设置） | 东方财富登录 Cookie |
+| `--source` | `eastmoney` | 数据来源：`eastmoney`（A股+港股）或 `cninfo`（巨潮A股+东方财富港股） |
+| 数据库 | `.stock-watcher-state/announcements.db` | 自动创建 |
+| 日志 | `logs/stock_watcher_YYYYMMDD.log` | 按天轮转，保留30天 |
 
-### 给 LLM 的提示
+---
 
-当分析 `announcements.db` 中的公告时：
+## 依赖
 
-1. **优先使用 `clean_text`**：已去除模板套话，内容更精炼
-2. **长文档仅有目录时**：`clean_text` 只有目录/提案列表（最多 2000 字），完整正文在 `full_text`，原始 PDF 在 `attach_url`
-3. **`full_text` 有但 `clean_text` 为空**：该文档被跳过或无法提取，可通过 `attach_url` 查看原始 PDF
-4. **`stock_code` 5 位数为港股**（如 02628），6 位数为 A 股（如 600519）
+- Python 3.9+
+- `requests` — HTTP 请求
+- `pdfplumber` — PDF 文本提取
+- `flask` — Web 仪表盘
+- `sqlite3` — 数据库（Python 内置）
+- `playwright`（可选） — Cookie 自动续签
 
-## 输出示例
+## 注意事项
 
-```
-[2026-06-02 09:00] === 自选股公告追踪报告 ===
-[2026-06-02 09:00] 共扫描 15 只自选股
-[2026-06-02 09:00] 发现 3 条新公告：
-[2026-06-02 09:00] ─────────────────────────────
-[2026-06-02 09:00] 1. 贵州茅台 (600519)
-[2026-06-02 09:00]    标题：贵州茅台关于召开2025年度股东大会的通知
-[2026-06-02 09:00]    时间：2026-06-01
-[2026-06-02 09:00]    链接：https://...
-[2026-06-02 09:00] ─────────────────────────────
-[2026-06-02 09:00] 2. 宁德时代 (300750)
-[2026-06-02 09:00]    标题：宁德时代2026年第一季度报告
-[2026-06-02 09:00]    时间：2026-05-31
-[2026-06-02 09:00]    链接：https://...
-```
+1. **Cookie 会过期**（几天到几周），过期后 `run.sh` 会尝试自动续签，失败则需手动更新
+2. **LLM 可选** — 未配置 API Key 时自动禁用，仅使用正则过滤，不影响基本功能
+3. **增量抓取** — 已存在的公告（通过 ann_id 去重）不会重复抓取
+4. **超长文档** — 通函、会议资料等 >5000 字的文档只提取目录，减少 LLM token 消耗

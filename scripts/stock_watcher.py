@@ -26,6 +26,7 @@ import json
 import logging
 import logging.handlers
 import os
+import shutil
 import sys
 from datetime import datetime
 
@@ -34,7 +35,7 @@ from ann_detail import fetch_all_contents
 from cninfo_api import fetch_all_cninfo
 from eastmoney_api import get_stocks, get_groups, fetch_all_announcements, load_cookie
 from llm_judge import LLMJudge
-from text_cleaner import clean_announcement_text, get_stats as clean_stats
+from text_cleaner import clean_announcement_text
 
 logger = logging.getLogger("stock_watcher")
 
@@ -44,7 +45,14 @@ DEFAULT_COOKIE = os.path.join(SKILL_DIR, "cookie.txt")
 DEFAULT_LOG_DIR = os.path.join(SKILL_DIR, "logs")
 
 
+_LOGGING_INITIALIZED = False
+
+
 def setup_logging(log_dir: str = DEFAULT_LOG_DIR):
+    global _LOGGING_INITIALIZED
+    if _LOGGING_INITIALIZED:
+        return
+
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(
         log_dir, f"stock_watcher_{datetime.now().strftime('%Y%m%d')}.log"
@@ -56,7 +64,7 @@ def setup_logging(log_dir: str = DEFAULT_LOG_DIR):
     root = logging.getLogger()
     root.setLevel(logging.INFO)
 
-    console = logging.StreamHandler(sys.stdout)
+    console = logging.StreamHandler(sys.stderr)
     console.setFormatter(fmt)
     root.addHandler(console)
 
@@ -65,6 +73,8 @@ def setup_logging(log_dir: str = DEFAULT_LOG_DIR):
     )
     fh.setFormatter(fmt)
     root.addHandler(fh)
+
+    _LOGGING_INITIALIZED = True
 
 
 def load_config(path: str = DEFAULT_CONFIG) -> dict:
@@ -77,7 +87,7 @@ def load_config(path: str = DEFAULT_CONFIG) -> dict:
             with open(path, "r") as f:
                 cfg = json.load(f)
             default.update(cfg)
-        except Exception as e:
+        except (json.JSONDecodeError, OSError) as e:
             logger.warning("配置文件加载失败: %s", e)
     return default
 
@@ -95,16 +105,7 @@ def send_notification(config: dict, new_anns: list[dict]):
 def _notify_terminal(new_anns: list[dict]):
     if not new_anns:
         return
-    print("\n" + "=" * 60)
-    print(f"  发现 {len(new_anns)} 条新公告")
-    print("=" * 60)
-    for i, ann in enumerate(new_anns, 1):
-        print(f"\n  {i}. {ann['stock_name']} ({ann['stock_code']})")
-        print(f"     标题：{ann['title']}")
-        print(f"     日期：{ann['ann_date']}")
-        print(f"     类型：{ann['ann_type']}")
-        print(f"     链接：{ann['url']}")
-    print("=" * 60)
+    logger.info("发现 %d 条新公告（已入库）", len(new_anns))
 
 
 def _notify_webhook(notify_cfg: dict, new_anns: list[dict]):
@@ -131,7 +132,7 @@ def _notify_webhook(notify_cfg: dict, new_anns: list[dict]):
         resp = req.post(url, json=payload, timeout=10)
         resp.raise_for_status()
         logger.info("Webhook 通知发送成功")
-    except Exception as e:
+    except (req.RequestException, OSError) as e:
         logger.warning("Webhook 通知发送失败: %s", e)
 
 
@@ -155,11 +156,21 @@ def run(args=None):
 
     setup_logging()
 
+    # 自动备份数据库（保留上一次的快照）
+    if os.path.exists(db.DB_PATH) and not parsed.stats and not parsed.list and not parsed.list_groups:
+        bak_path = db.DB_PATH + ".bak"
+        try:
+            shutil.copy2(db.DB_PATH, bak_path)
+            logger.debug("数据库已备份: %s", bak_path)
+        except OSError as e:
+            logger.warning("数据库备份失败: %s", e)
+
     if parsed.stats:
         stats = db.get_stats()
         print(f"\n数据库统计:")
         print(f"  总公告数: {stats['total']}")
-        print(f"  含正文: {stats['with_content']} ({stats['with_content']/stats['total']*100:.1f}%)")
+        pct = (stats['with_content'] / stats['total'] * 100) if stats['total'] else 0
+        print(f"  含正文: {stats['with_content']} ({pct:.1f}%)")
         print(f"  追踪股票数: {stats['stocks_tracked']}")
         print(f"  最后更新: {stats['latest_update']}")
         print(f"  数据库路径: {db.DB_PATH}")
@@ -205,7 +216,16 @@ def run(args=None):
 
     if parsed.list:
         days = parsed.days or 30
-        anns = db.list_announcements(stock_code=parsed.stock, days=days)
+        # 如果指定了 --group，先获取该分组的股票代码列表用于过滤
+        stock_codes = None
+        if parsed.group:
+            group_stocks = get_stocks(DEFAULT_COOKIE, group_name=parsed.group)
+            if group_stocks:
+                stock_codes = [s["code"] for s in group_stocks]
+                logger.info("分组 [%s] 包含 %d 只股票", parsed.group, len(stock_codes))
+            else:
+                logger.warning("分组 [%s] 未获取到股票", parsed.group)
+        anns = db.list_announcements(stock_code=parsed.stock, stock_codes=stock_codes, days=days)
         if not anns:
             print("暂无公告记录")
             return
@@ -237,13 +257,13 @@ def run(args=None):
     llm_judge = LLMJudge.from_config(config)
     days = parsed.days or config.get("fetch_interval_days", 7)
 
-    if parsed.fetch_content and not parsed.stats and not parsed.list:
+    if parsed.fetch_content:
         pending = db.get_pending_content()
         if not pending:
             logger.info("数据库中没有待获取全文的公告")
         else:
             logger.info("正在补抓 %d 条缺少全文的公告（分批保存）...", len(pending))
-            fetch_all_contents(pending, delay=0.3, save_batch=db.update_content, batch_size=10, llm_judge=llm_judge)
+            fetch_all_contents(pending, save_batch=db.update_content, batch_size=10, llm_judge=llm_judge)
             stats = db.get_stats()
             logger.info("全文获取完成（数据库共 %d 条，含正文 %d 条）",
                         stats["total"], stats["with_content"])
@@ -301,10 +321,20 @@ def run(args=None):
 
     anns_to_save = anns if parsed.force else new_anns
     if not parsed.dry_run and anns_to_save:
-        db.record_announcements(anns_to_save)
+        # 先获取全文（fetch_all_contents 会修改 ann 的 full_text）
+        # 然后再根据 full_text 判断 status
         if parsed.fetch_content:
             logger.info("正在获取 %d 条新公告的全文...", len(anns_to_save))
-            fetch_all_contents(anns_to_save, delay=0.3, save_batch=db.update_content, batch_size=10, llm_judge=llm_judge)
+            fetch_all_contents(anns_to_save, save_batch=db.update_content, batch_size=10, llm_judge=llm_judge)
+
+        # 根据最终的 full_text 判断 status
+        for ann in anns_to_save:
+            ann["status"] = "valuable" if ann.get("full_text") else "filtered"
+        valuable_count = sum(1 for a in anns_to_save if a["status"] == "valuable")
+        filtered_count = len(anns_to_save) - valuable_count
+        if filtered_count:
+            logger.info("%d 条有价值 / %d 条已过滤", valuable_count, filtered_count)
+        db.record_announcements(anns_to_save)
         stats = db.get_stats()
         logger.info("状态已保存（数据库共 %d 条，含正文 %d 条）",
                     stats["total"], stats["with_content"])
@@ -314,9 +344,6 @@ def run(args=None):
         stats = db.get_stats()
         logger.info("状态已保存（数据库共 %d 条，含正文 %d 条）",
                     stats["total"], stats["with_content"])
-
-    if not parsed.dry_run:
-        db.prune_empty()
 
     logger.info("运行完成\n")
 

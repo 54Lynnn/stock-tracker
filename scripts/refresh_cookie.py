@@ -13,6 +13,9 @@ import logging
 import os
 import sys
 
+import requests
+import json
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(levelname)s %(message)s",
@@ -29,7 +32,8 @@ def main():
         logger.error("Cookie 文件不存在: %s", COOKIE_PATH)
         sys.exit(1)
 
-    old_cookie = open(COOKIE_PATH).read().strip()
+    with open(COOKIE_PATH) as f:
+        old_cookie = f.read().strip()
     logger.info("当前 Cookie: %d 字符", len(old_cookie))
 
     try:
@@ -55,7 +59,7 @@ def main():
                     "domain": ".eastmoney.com",
                     "path": "/",
                 }])
-            except Exception:
+            except (ValueError, TypeError):
                 pass
 
         # 访问东方财富自选股页面
@@ -68,7 +72,7 @@ def main():
                 timeout=30000,
             )
             logger.info("页面加载完成")
-        except Exception as e:
+        except (TimeoutError, OSError) as e:
             logger.warning("页面加载超时或失败: %s（继续执行）", e)
 
         # 获取刷新后的 Cookie
@@ -101,8 +105,7 @@ def main():
     sys.path.insert(0, os.path.join(SKILL_DIR, "scripts"))
     try:
         from eastmoney_api import get_stocks
-        import logging as _lg
-        _lg.disable(_lg.CRITICAL)
+        logging.getLogger("eastmoney_api").setLevel(logging.CRITICAL)
 
         stocks = get_stocks(COOKIE_PATH)
         if stocks:
@@ -115,7 +118,7 @@ def main():
             logger.warning("         → F12 → Console → copy(document.cookie)")
             logger.warning("         → 粘贴覆盖 cookie.txt")
             sys.exit(1)
-    except Exception as e:
+    except (requests.RequestException, json.JSONDecodeError, OSError) as e:
         logger.warning("验证失败: %s", e)
         sys.exit(1)
 

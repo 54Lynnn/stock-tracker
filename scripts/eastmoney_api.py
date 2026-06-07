@@ -13,6 +13,7 @@ import os
 import re
 import time
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -93,7 +94,7 @@ def get_groups(cookie: str) -> list[dict]:
         r.raise_for_status()
         data = r.json()
         return data.get("data", {}).get("ginfolist", [])
-    except Exception as e:
+    except (requests.RequestException, json.JSONDecodeError) as e:
         logger.warning("myfavor 分组列表获取失败: %s", e)
         return []
 
@@ -151,18 +152,47 @@ def fetch_stocks_from_myfavor(cookie: str, group_name: Optional[str] = None) -> 
                 seen.add(key)
                 all_stocks.append(make_stock_entry(code, market, item.get("name", "")))
             logger.debug("  分组 %s(%s): %d 只股票", gname, gid, len(stk_list))
-        except Exception as e:
+        except (requests.RequestException, json.JSONDecodeError) as e:
             logger.warning("  分组 %s 获取失败: %s", gid, e)
 
     logger.info("myfavor API: 共获取 %d 只自选股 (去重后)", len(all_stocks))
     return all_stocks
 
 
-def fetch_stock_names(stocks: list[dict], cookie: Optional[str] = None) -> list[dict]:
-    """填充股票名称（API 未返回名称时用代码代替）"""
-    for stock in stocks:
-        if not stock.get("name"):
+def fetch_stock_names(stocks: list[dict]) -> list[dict]:
+    """填充股票名称。API 未返回名称时，尝试从巨潮资讯网补查。"""
+    missing = [s for s in stocks if not s.get("name")]
+    if not missing:
+        return stocks
+
+    # 批量补查：通过巨潮 API 用代码搜索获取名称
+    try:
+        from cninfo_api import CNINFO_QUERY_URL, HEADERS as CNINFO_HEADERS
+        for stock in missing:
+            try:
+                resp = requests.post(
+                    CNINFO_QUERY_URL,
+                    headers=CNINFO_HEADERS,
+                    data={"searchkey": stock["code"], "pageNum": 1, "pageSize": 1,
+                          "column": "szse", "tabName": "fulltext"},
+                    timeout=10,
+                )
+                resp.raise_for_status()
+                anns = resp.json().get("announcements") or []
+                if anns:
+                    name = anns[0].get("secName", "")
+                    if name:
+                        stock["name"] = name
+                        continue
+            except (requests.RequestException, json.JSONDecodeError):
+                pass
+            # 兜底：用代码代替
             stock["name"] = stock["code"]
+    except ImportError:
+        for s in missing:
+            if not s.get("name"):
+                s["name"] = s["code"]
+
     return stocks
 
 
@@ -218,13 +248,14 @@ def fetch_announcements(
                 "url": ann_url,
                 "art_code": art_code,
                 "notice_id": str(ann.get("notice_date", "")),  # 实际存的是日期，字段名兼容旧数据
+                "market": market,
             })
         logger.debug(
             "股票 %s(%s): 获取到 %d 条公告",
             stock.get("name", ""), stock["code"], len(results),
         )
         return results
-    except Exception as e:
+    except (requests.RequestException, json.JSONDecodeError) as e:
         logger.warning("获取股票 %s(%s) 公告失败: %s", stock.get("name", ""), stock["code"], e)
         return []
 
@@ -234,17 +265,27 @@ def fetch_all_announcements(
     cookie: Optional[str] = None,
     days_back: int = 7,
     delay: float = 0.5,
+    max_workers: int = 5,
 ) -> list[dict]:
     all_anns = []
-    for i, stock in enumerate(stocks):
-        logger.info(
-            "正在获取 [%d/%d] %s(%s)...",
-            i + 1, len(stocks), stock.get("name", ""), stock["code"],
-        )
-        anns = fetch_announcements(stock, cookie, days_back=days_back)
-        all_anns.extend(anns)
-        if i < len(stocks) - 1:
-            time.sleep(delay)
+    total = len(stocks)
+
+    def _fetch_one(stock):
+        return stock, fetch_announcements(stock, cookie, days_back=days_back)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_fetch_one, s): s for s in stocks}
+        for i, future in enumerate(as_completed(futures)):
+            try:
+                stock, anns = future.result()
+                logger.info(
+                    "获取完成 [%d/%d] %s(%s): %d 条",
+                    i + 1, total, stock.get("name", ""), stock["code"], len(anns),
+                )
+                all_anns.extend(anns)
+            except Exception as e:
+                logger.warning("获取失败 [%d/%d] %s: %s", i + 1, total, futures[future].get("name", ""), e)
+
     return all_anns
 
 
@@ -282,7 +323,7 @@ def load_stocks_from_config(config_path: str = "config.json") -> list[dict]:
                 continue
             result.append(make_stock_entry(code, market, s.get("name", None)))
         return result
-    except Exception as e:
+    except (json.JSONDecodeError, OSError) as e:
         logger.warning("加载配置文件自选股失败: %s", e)
         return []
 
@@ -306,7 +347,7 @@ def get_stocks(cookie_path: str = "cookie.txt", group_name: Optional[str] = None
     # 1. myfavor API (lite.html 使用的方式)
     stocks = fetch_stocks_from_myfavor(cookie, group_name=group_name)
     if stocks:
-        stocks = fetch_stock_names(stocks, cookie)
+        stocks = fetch_stock_names(stocks)
         # 过滤：仅保留有公告价值的真实个股 (SH/SZ/HK, 排除指数/ETF/债券)
         stocks = filter_real_stocks(stocks)
         logger.info("过滤后(仅真实个股): %d 只", len(stocks))
@@ -315,7 +356,7 @@ def get_stocks(cookie_path: str = "cookie.txt", group_name: Optional[str] = None
     # 2. Cookie 解析 (兜底)
     stocks = parse_selfselect_from_cookie(cookie)
     if stocks:
-        return fetch_stock_names(stocks, cookie)
+        return fetch_stock_names(stocks)
 
     # 3. config.json
     logger.info("API 未获取到, 尝试 config.json...")

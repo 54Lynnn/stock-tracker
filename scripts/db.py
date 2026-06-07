@@ -52,18 +52,38 @@ CREATE_INDEXES_SQL = [
 ]
 
 INSERT_SQL = """
-INSERT OR REPLACE INTO announcements
+INSERT INTO announcements
     (ann_id, stock_code, stock_name, title, ann_date, ann_type,
-     url, art_code, notice_id, full_text, clean_text, attach_url)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     url, art_code, notice_id, full_text, clean_text, attach_url, status, ann_type_tag, ann_type_category, clean_text_length)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(ann_id) DO UPDATE SET
+    stock_code = excluded.stock_code,
+    stock_name = CASE WHEN excluded.stock_name != '' THEN excluded.stock_name ELSE announcements.stock_name END,
+    title = excluded.title,
+    ann_date = excluded.ann_date,
+    ann_type = excluded.ann_type,
+    url = excluded.url,
+    art_code = excluded.art_code,
+    notice_id = excluded.notice_id,
+    full_text = CASE WHEN excluded.full_text != '' THEN excluded.full_text ELSE announcements.full_text END,
+    clean_text = CASE WHEN excluded.clean_text != '' THEN excluded.clean_text ELSE announcements.clean_text END,
+    attach_url = CASE WHEN excluded.attach_url != '' THEN excluded.attach_url ELSE announcements.attach_url END,
+    status = CASE WHEN excluded.status != '' THEN excluded.status ELSE announcements.status END,
+    ann_type_tag = CASE WHEN excluded.ann_type_tag != '' THEN excluded.ann_type_tag ELSE announcements.ann_type_tag END,
+    ann_type_category = CASE WHEN excluded.ann_type_category != '' THEN excluded.ann_type_category ELSE announcements.ann_type_category END,
+    clean_text_length = CASE WHEN excluded.clean_text_length > 0 THEN excluded.clean_text_length ELSE announcements.clean_text_length END
 """
 
 UPDATE_CONTENT_SQL = """
-UPDATE announcements SET full_text = ?, clean_text = ?, attach_url = ? WHERE ann_id = ?
+UPDATE announcements SET full_text = ?, clean_text = ?, clean_text_length = ?, attach_url = ?, status = 'valuable' WHERE ann_id = ?
 """
 
 UPDATE_CLEAN_SQL = """
-UPDATE announcements SET clean_text = ? WHERE ann_id = ?
+UPDATE announcements SET clean_text = ?, clean_text_length = ? WHERE ann_id = ?
+"""
+
+UPDATE_SUMMARY_SQL = """
+UPDATE announcements SET summary = ? WHERE ann_id = ?
 """
 
 
@@ -76,7 +96,7 @@ def _get_conn() -> sqlite3.Connection:
 
 
 def _migrate_schema(conn: sqlite3.Connection):
-    for col, col_def in [("full_text", "TEXT"), ("clean_text", "TEXT"), ("attach_url", "TEXT")]:
+    for col, col_def in [("full_text", "TEXT"), ("clean_text", "TEXT"), ("attach_url", "TEXT"), ("summary", "TEXT"), ("status", "TEXT DEFAULT 'valuable'"), ("ann_type_tag", "TEXT DEFAULT ''"), ("ann_type_category", "TEXT DEFAULT ''"), ("clean_text_length", "INTEGER DEFAULT 0")]:
         try:
             conn.execute(f"ALTER TABLE announcements ADD COLUMN {col} {col_def}")
             logger.info("数据库迁移: 新增字段 %s", col)
@@ -115,7 +135,7 @@ def _migrate_from_json(conn: sqlite3.Connection, json_path: str):
         for h in hashes:
             conn.execute(
                 INSERT_SQL,
-                (h, "", "", "", "", "", "", "", "", "", ""),
+                (h, "", "", "", "", "", "", "", "", "", "", "", "filtered", "", "", 0),
             )
         conn.commit()
         backup = json_path + ".bak"
@@ -128,7 +148,7 @@ def _migrate_from_json(conn: sqlite3.Connection, json_path: str):
 
 def make_ann_id(ann: dict) -> str:
     raw = f"{ann['stock_code']}_{ann.get('art_code', '')}_{ann.get('notice_id', '')}_{ann['title']}"
-    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def get_seen_ids() -> set:
@@ -163,6 +183,10 @@ def record_announcements(announcements: list[dict]):
                     ann.get("full_text", ""),
                     ann.get("clean_text", ""),
                     ann.get("attach_url", ""),
+                    ann.get("status", "filtered"),
+                    ann.get("ann_type_tag", ""),
+                    ann.get("ann_type_category", ""),
+                    len(ann.get("clean_text", "")),
                 ),
             )
             count += 1
@@ -183,7 +207,7 @@ def update_content(announcements: list[dict]):
             if not full_text and not attach_url:
                 continue
             ann_id = make_ann_id(ann)
-            conn.execute(UPDATE_CONTENT_SQL, (full_text, clean_text, attach_url, ann_id))
+            conn.execute(UPDATE_CONTENT_SQL, (full_text, clean_text, len(clean_text), attach_url, ann_id))
             count += 1
         conn.commit()
         if count:
@@ -202,11 +226,81 @@ def update_clean_text(announcements: list[dict]):
             if not clean_text:
                 continue
             ann_id = make_ann_id(ann)
-            conn.execute(UPDATE_CLEAN_SQL, (clean_text, ann_id))
+            conn.execute(UPDATE_CLEAN_SQL, (clean_text, len(clean_text), ann_id))
             count += 1
         conn.commit()
         if count:
             logger.info("已清洗 %d 条公告", count)
+    finally:
+        conn.close()
+
+
+def update_summary(ann_id: str, summary: str):
+    """更新单条公告的摘要"""
+    if not summary:
+        return
+    conn = _get_conn()
+    try:
+        conn.execute(UPDATE_SUMMARY_SQL, (summary, ann_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_stock_overview() -> list[dict]:
+    """获取所有股票的概览统计（供 Web 仪表盘使用）"""
+    conn = _get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT stock_code, stock_name,
+                   COUNT(*) as total,
+                   SUM(CASE WHEN status = 'valuable' THEN 1 ELSE 0 END) as valuable_total,
+                   SUM(CASE WHEN ann_date >= date('now', '-7 days') THEN 1 ELSE 0 END) as total_7d,
+                   SUM(CASE WHEN ann_date >= date('now', '-7 days') AND status = 'valuable' THEN 1 ELSE 0 END) as valuable_7d,
+                   SUM(CASE WHEN ann_date >= date('now', '-15 days') THEN 1 ELSE 0 END) as total_15d,
+                   SUM(CASE WHEN ann_date >= date('now', '-15 days') AND status = 'valuable' THEN 1 ELSE 0 END) as valuable_15d,
+                   SUM(CASE WHEN ann_date >= date('now', '-30 days') THEN 1 ELSE 0 END) as total_30d,
+                   SUM(CASE WHEN ann_date >= date('now', '-30 days') AND status = 'valuable' THEN 1 ELSE 0 END) as valuable_30d
+            FROM announcements
+            GROUP BY stock_code
+            ORDER BY stock_name
+        """).fetchall()
+        return [
+            {
+                "stock_code": r[0], "stock_name": r[1],
+                "valuable_7d": r[5], "total_7d": r[4],
+                "valuable_15d": r[7], "total_15d": r[6],
+                "valuable_30d": r[9], "total_30d": r[8],
+                "valuable_total": r[3], "total": r[2],
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+def get_announcements_for_stock(stock_code: str, days: int = 30) -> list[dict]:
+    """获取指定股票的公告列表（供 Web 仪表盘使用）"""
+    conn = _get_conn()
+    try:
+        rows = conn.execute("""
+            SELECT ann_id, stock_code, stock_name, title, ann_date,
+                   clean_text, summary, url, attach_url, first_seen_at, ann_type_tag, ann_type_category
+            FROM announcements
+            WHERE stock_code = ? AND ann_date >= date('now', ? || ' days')
+              AND status = 'valuable'
+            ORDER BY ann_date DESC
+        """, (stock_code, f"-{days}")).fetchall()
+        return [
+            {
+                "ann_id": r[0], "stock_code": r[1], "stock_name": r[2],
+                "title": r[3], "ann_date": r[4], "clean_text": r[5],
+                "summary": r[6], "url": r[7], "attach_url": r[8],
+                "first_seen_at": r[9], "ann_type_tag": r[10] if len(r) > 10 else "",
+                "ann_type_category": r[11] if len(r) > 11 else "",
+            }
+            for r in rows
+        ]
     finally:
         conn.close()
 
@@ -252,15 +346,15 @@ def get_pending_content() -> list[dict]:
 
 
 def prune_empty():
-    """删除 full_text 和 clean_text 同时为空的无效记录"""
+    """删除被过滤的无效记录（status='filtered' 且无正文）"""
     conn = _get_conn()
     try:
         deleted = conn.execute(
-            "DELETE FROM announcements WHERE (full_text IS NULL OR full_text = '')"
+            "DELETE FROM announcements WHERE status = 'filtered' AND (full_text IS NULL OR full_text = '')"
         ).rowcount
         conn.commit()
         if deleted:
-            logger.info("已清理 %d 条无正文的空记录", deleted)
+            logger.info("已清理 %d 条被过滤的记录", deleted)
         return deleted
     finally:
         conn.close()
@@ -299,7 +393,7 @@ def get_stats() -> dict:
         conn.close()
 
 
-def list_announcements(stock_code: str = None, days: int = None, limit: int = 100) -> list[dict]:
+def list_announcements(stock_code: str = None, stock_codes: list[str] = None, days: int = None, limit: int = 100) -> list[dict]:
     conn = _get_conn()
     try:
         sql = (
@@ -312,6 +406,10 @@ def list_announcements(stock_code: str = None, days: int = None, limit: int = 10
         if stock_code:
             conditions.append("stock_code = ?")
             params.append(stock_code)
+        elif stock_codes:
+            placeholders = ",".join("?" for _ in stock_codes)
+            conditions.append(f"stock_code IN ({placeholders})")
+            params.extend(stock_codes)
 
         if days:
             conditions.append("ann_date >= date('now', ? || ' days')")
@@ -331,6 +429,41 @@ def list_announcements(stock_code: str = None, days: int = None, limit: int = 10
                 "url": r[6], "art_code": r[7],
                 "full_text": r[8], "attach_url": r[9],
                 "first_seen_at": r[10],
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+def get_announcements_with_summary(stock_codes: list[str] = None, days: int = 1) -> list[dict]:
+    """获取有摘要的有价值公告（供 digest 输出使用）"""
+    conn = _get_conn()
+    try:
+        sql = (
+            "SELECT stock_code, stock_name, title, ann_date, summary, ann_type_tag, ann_type_category "
+            "FROM announcements "
+            "WHERE status = 'valuable' AND summary IS NOT NULL AND summary != '' "
+            "AND ann_date >= date('now', ? || ' days') "
+            "ORDER BY ann_date DESC, stock_code"
+        )
+        params = [f"-{days}"]
+
+        if stock_codes:
+            placeholders = ",".join("?" for _ in stock_codes)
+            sql = sql.replace(
+                "AND ann_date >= date('now', ? || ' days') ",
+                f"AND stock_code IN ({placeholders}) AND ann_date >= date('now', ? || ' days') ",
+            )
+            params = stock_codes + params
+
+        rows = conn.execute(sql, params).fetchall()
+        return [
+            {
+                "stock_code": r[0], "stock_name": r[1],
+                "title": r[2], "ann_date": r[3], "summary": r[4],
+                "ann_type_tag": r[5] if len(r) > 5 else "",
+                "ann_type_category": r[6] if len(r) > 6 else "",
             }
             for r in rows
         ]

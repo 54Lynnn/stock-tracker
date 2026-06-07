@@ -9,7 +9,7 @@
     "enabled": true,
     "base_url": "https://opencode.ai/zen/go/v1",
     "model": "deepseek-v4-flash",
-    "timeout": 15,
+    "timeout": 60,
     "retries": 2
   }
 }

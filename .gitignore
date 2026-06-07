@@ -4,3 +4,4 @@ cookie.txt
 logs/
 __pycache__/
 *.pyc
+*.db.bak
