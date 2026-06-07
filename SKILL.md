@@ -169,21 +169,6 @@ openclaw cron add \
   --cron "0 1 * * *" \
   --message "运行股票公告扫描：cd {{SKILL_DIR}} && bash run.sh mygroup 15 eastmoney"
 ```
-
----
-
-## 配置参数
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `config.json` → `llm.enabled` | `true` | 是否启用 LLM |
-| `config.json` → `llm.model` | `deepseek-v4-flash` | LLM 模型 |
-| `.env` → `LLM_API_KEY` | （需设置） | LLM API Key |
-| `cookie.txt` | （需设置） | 东方财富登录 Cookie |
-| `--source` | `eastmoney` | 数据来源：`eastmoney`（A股+港股）或 `cninfo`（巨潮A股+东方财富港股） |
-| 数据库 | `.stock-watcher-state/announcements.db` | 自动创建 |
-| 日志 | `logs/stock_watcher_YYYYMMDD.log` | 按天轮转，保留30天 |
-
 ---
 
 ## 依赖
