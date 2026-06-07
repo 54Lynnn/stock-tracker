@@ -23,7 +23,7 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATE_DIR = os.path.join(SKILL_DIR, ".stock-watcher-state")
+STATE_DIR = os.path.join(SKILL_DIR, ".stock-tracker-state")
 DB_PATH = os.path.join(STATE_DIR, "announcements.db")
 
 CREATE_TABLE_SQL = """

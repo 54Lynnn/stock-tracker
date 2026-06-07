@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# stock-watcher 环境自动配置脚本
+# stock-tracker 环境自动配置脚本
 # 用法: bash scripts/setup.sh
 #
 # 功能:
@@ -17,7 +17,7 @@ SCRIPT_DIR="$SKILL_DIR/scripts"
 PYTHON="${PYTHON:-python3}"
 
 echo "========================================"
-echo " Stock Watcher - 环境配置脚本"
+echo " Stock Tracker - 环境配置脚本"
 echo "========================================"
 
 # 1. 安装依赖
@@ -45,7 +45,7 @@ fi
 echo ""
 echo "[3/5] 创建必要目录..."
 mkdir -p "$SKILL_DIR/logs"
-STATE_DIR="$SKILL_DIR/.stock-watcher-state"
+STATE_DIR="$SKILL_DIR/.stock-tracker-state"
 mkdir -p "$STATE_DIR"
 echo "  日志目录: $SKILL_DIR/logs"
 echo "  状态目录: $STATE_DIR"
@@ -67,7 +67,7 @@ fi
 # .env（LLM API Key）
 if [ ! -f "$SKILL_DIR/.env" ]; then
     echo "  [提示] .env 不存在，正在创建空白模板..."
-    echo "# Stock Watcher LLM 配置" > "$SKILL_DIR/.env"
+    echo "# Stock Tracker LLM 配置" > "$SKILL_DIR/.env"
     echo "# 从 https://platform.openai.com/api-keys 获取" >> "$SKILL_DIR/.env"
     echo "LLM_API_KEY=" >> "$SKILL_DIR/.env"
     echo "  已创建: $SKILL_DIR/.env（如需 LLM 筛选功能，请填入 API Key）"
@@ -113,9 +113,9 @@ if echo "$EXISTING" | grep -qF "$SCRIPT_DIR/stock_watcher.py"; then
 else
     (
         echo "$EXISTING"
-        echo "# stock-watcher: 东方财富自选股公告追踪 (北京时间 9:00)"
+        echo "# stock-tracker: 东方财富自选股公告追踪 (北京时间 9:00)"
         echo "$CRON_CMD_1"
-        echo "# stock-watcher: 东方财富自选股公告追踪 (北京时间 15:00)"
+        echo "# stock-tracker: 东方财富自选股公告追踪 (北京时间 15:00)"
         echo "$CRON_CMD_2"
     ) | crontab -
     echo "  [OK] 定时任务已添加！"
