@@ -80,6 +80,12 @@ openclaw cron add \
 
 用户手动运行，抓取公告 + 生成摘要 + 启动 Web 仪表盘，浏览器查看所有公告详情。
 
+告诉 agent 即可：
+
+> "帮我打开公告仪表盘，看看 mygroup 板块最近15天的情况"
+
+或者手动运行：
+
 ```bash
 # 用法: bash dashboard.sh [group] [days] [source]
 bash dashboard.sh mygroup 15 eastmoney
