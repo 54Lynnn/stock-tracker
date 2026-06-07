@@ -35,6 +35,12 @@ metadata:
 
 Agent 定时运行 `run.sh`，自动抓取公告、生成摘要，输出有价值公告的 digest 转发给用户。
 
+告诉 agent 即可：
+
+> "帮我设置 stock-watcher 定时任务，每天早上8点运行一次，追踪【xx】板块的最新公告，有重要公告通知我"
+
+或者手动运行：
+
 ```bash
 # 用法: bash run.sh [group] [days] [source]
 bash run.sh mygroup 15 eastmoney
@@ -57,21 +63,6 @@ DIGEST_TOTAL:3
 **无公告时：**
 ```
 DIGEST_EMPTY:最近1天test板块无高价值公告
-```
-
-### 配置定时任务
-
-告诉 agent 即可：
-
-> "帮我设置 stock-watcher 定时任务，每天早上8点运行一次，追踪【xx】板块的最新公告，有重要公告通知我"
-
-或者手动配置：
-
-```bash
-openclaw cron add \
-  --name stock-watcher \
-  --cron "0 1 * * *" \
-  --message "运行股票公告扫描：cd {{SKILL_DIR}} && bash run.sh mygroup 15 eastmoney"
 ```
 
 ---
