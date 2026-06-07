@@ -99,6 +99,12 @@ bash dashboard.sh mygroup 15 eastmoney
 
 ## 首次设置
 
+告诉 agent 即可：
+
+> "帮我初始化 stock-watcher，安装依赖、配置 Cookie 和 LLM"
+
+或者按以下步骤手动设置：
+
 ### 1. 安装依赖
 
 ```bash
