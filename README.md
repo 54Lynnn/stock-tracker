@@ -32,8 +32,8 @@ echo "LLM_API_KEY=sk-your-api-key" > .env
 ### 4. 验证运行
 
 ```bash
-python3 scripts/stock_watcher.py --group test --days 15 --fetch-content
-python3 scripts/stock_watcher.py --stats
+python3 scripts/stock_tracker.py --group test --days 15 --fetch-content
+python3 scripts/stock_tracker.py --stats
 ```
 
 ---
@@ -69,11 +69,11 @@ bash dashboard.sh mygroup 15 eastmoney
 ## 常用命令
 
 ```bash
-python3 scripts/stock_watcher.py --stats                 # 数据库统计
-python3 scripts/stock_watcher.py --list                  # 最近公告
-python3 scripts/stock_watcher.py --list --stock 600519   # 指定股票
-python3 scripts/stock_watcher.py --list-groups           # 可用分组
-python3 scripts/stock_watcher.py --clean                 # 清洗正文
+python3 scripts/stock_tracker.py --stats                 # 数据库统计
+python3 scripts/stock_tracker.py --list                  # 最近公告
+python3 scripts/stock_tracker.py --list --stock 600519   # 指定股票
+python3 scripts/stock_tracker.py --list-groups           # 可用分组
+python3 scripts/stock_tracker.py --clean                 # 清洗正文
 ```
 
 ---

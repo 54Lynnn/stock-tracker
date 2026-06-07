@@ -1,5 +1,5 @@
 #!/bin/bash
-# stock_watcher 每日运行脚本
+# stock_tracker 每日运行脚本
 # 用法: bash run.sh [group] [days] [source]
 # 示例: bash run.sh mygroup 15 eastmoney
 #        bash run.sh test 15 cninfo
@@ -32,7 +32,7 @@ fi
 
 # 第一步：抓取 + 过滤 + 入库
 log "抓取公告..."
-if ! python3 scripts/stock_watcher.py --group "$GROUP" --source "$SOURCE" --days "$DAYS" --fetch-content 2>/dev/null; then
+if ! python3 scripts/stock_tracker.py --group "$GROUP" --source "$SOURCE" --days "$DAYS" --fetch-content 2>/dev/null; then
     echo "ERROR:公告抓取失败（group=$GROUP source=$SOURCE days=$DAYS）"
     exit 1
 fi

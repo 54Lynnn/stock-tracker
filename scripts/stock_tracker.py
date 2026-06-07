@@ -8,17 +8,17 @@
   - cninfo:    A 股从巨潮资讯网获取，港股从东方财富获取（推荐，PDF 更稳定）
 
 用法:
-    python stock_watcher.py                     # 正常运行（东方财富）
-    python stock_watcher.py --source cninfo      # 从巨潮资讯网获取
-    python stock_watcher.py --force              # 强制重新抓取所有公告
-    python stock_watcher.py --days 14            # 抓取最近14天的公告
-    python stock_watcher.py --dry-run            # 试运行（不更新状态）
-    python stock_watcher.py --stats              # 查看数据库统计
-    python stock_watcher.py --list               # 列出最近公告
-    python stock_watcher.py --list --stock 600519 # 列出某只股票的历史公告
-    python stock_watcher.py --fetch-content      # 补抓缺少全文的公告正文
-    python stock_watcher.py --prune               # 清理无正文的空记录
-    python stock_watcher.py --group 持仓 --fetch-content  # 抓取持仓分组公告并获取全文
+    python stock_tracker.py                     # 正常运行（东方财富）
+    python stock_tracker.py --source cninfo      # 从巨潮资讯网获取
+    python stock_tracker.py --force              # 强制重新抓取所有公告
+    python stock_tracker.py --days 14            # 抓取最近14天的公告
+    python stock_tracker.py --dry-run            # 试运行（不更新状态）
+    python stock_tracker.py --stats              # 查看数据库统计
+    python stock_tracker.py --list               # 列出最近公告
+    python stock_tracker.py --list --stock 600519 # 列出某只股票的历史公告
+    python stock_tracker.py --fetch-content      # 补抓缺少全文的公告正文
+    python stock_tracker.py --prune               # 清理无正文的空记录
+    python stock_tracker.py --group 持仓 --fetch-content  # 抓取持仓分组公告并获取全文
 """
 
 import argparse
@@ -37,7 +37,7 @@ from eastmoney_api import get_stocks, get_groups, fetch_all_announcements, load_
 from llm_judge import LLMJudge
 from text_cleaner import clean_announcement_text
 
-logger = logging.getLogger("stock_watcher")
+logger = logging.getLogger("stock_tracker")
 
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_CONFIG = os.path.join(SKILL_DIR, "config.json")
@@ -55,7 +55,7 @@ def setup_logging(log_dir: str = DEFAULT_LOG_DIR):
 
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(
-        log_dir, f"stock_watcher_{datetime.now().strftime('%Y%m%d')}.log"
+        log_dir, f"stock_tracker_{datetime.now().strftime('%Y%m%d')}.log"
     )
     fmt = logging.Formatter(
         "[%(asctime)s] %(levelname)s %(message)s",

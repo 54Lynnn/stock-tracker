@@ -83,7 +83,7 @@ bash dashboard.sh mygroup 15 eastmoney
 ```
 
 脚本自动执行三步：
-1. `stock_watcher.py --fetch-content` — 抓取公告 + 全文 + LLM 分类
+1. `stock_tracker.py --fetch-content` — 抓取公告 + 全文 + LLM 分类
 2. `daily_summary.py` — 生成摘要
 3. `dashboard.py` — 启动 Flask 仪表盘（默认端口 5001）
 
@@ -151,8 +151,8 @@ echo "LLM_API_KEY=sk-your-api-key" > .env
 ### 4. 验证运行
 
 ```bash
-python3 scripts/stock_watcher.py --group test --days 15 --fetch-content
-python3 scripts/stock_watcher.py --stats
+python3 scripts/stock_tracker.py --group test --days 15 --fetch-content
+python3 scripts/stock_tracker.py --stats
 ```
 
 ### 5. 配置定时任务

@@ -1,5 +1,5 @@
 #!/bin/bash
-# stock_watcher 仪表盘模式
+# stock_tracker 仪表盘模式
 # 抓取公告 → 生成摘要 → 启动 Web 仪表盘
 #
 # 用法: bash dashboard.sh [group] [days] [source]
@@ -19,7 +19,7 @@ echo "分组: $GROUP, 天数: $DAYS, 数据源: $SOURCE"
 # 第一步：抓取公告
 echo ""
 echo "[1/3] 抓取公告..."
-python3 scripts/stock_watcher.py --group "$GROUP" --source "$SOURCE" --days "$DAYS" --fetch-content
+python3 scripts/stock_tracker.py --group "$GROUP" --source "$SOURCE" --days "$DAYS" --fetch-content
 if [ $? -ne 0 ]; then
     echo "ERROR:公告抓取失败"
     exit 1

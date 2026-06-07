@@ -9,7 +9,7 @@
 eastmoney_api.py / cninfo_api.py  ─── 获取公告列表
       │
       ▼
-stock_watcher.py ─── 主入口，协调各模块
+stock_tracker.py ─── 主入口，协调各模块
       │
       ├─ Phase 1a: 正则跳过判断 (ann_detail.should_skip_content)
       │     │  13 条 SKIP_CONTENT_PATTERNS，极速过滤
@@ -30,7 +30,7 @@ stock_watcher.py ─── 主入口，协调各模块
 
 ## 模块分解
 
-### stock_watcher.py（主入口）
+### stock_tracker.py（主入口）
 
 **CLI 参数：**
 

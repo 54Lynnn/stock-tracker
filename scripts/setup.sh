@@ -103,12 +103,12 @@ fi
 # 4. 设置 crontab
 echo ""
 echo "[5/5] 设置定时任务（每天 9:00 和 15:00 北京时间）..."
-CRON_CMD_1="0 1 * * * cd $SKILL_DIR && $PYTHON $SCRIPT_DIR/stock_watcher.py --source cninfo --group 持仓 --days 15 --fetch-content >> $SKILL_DIR/logs/stock_watcher.log 2>&1"
-CRON_CMD_2="0 7 * * * cd $SKILL_DIR && $PYTHON $SCRIPT_DIR/stock_watcher.py --source cninfo --group 持仓 --days 15 --fetch-content >> $SKILL_DIR/logs/stock_watcher.log 2>&1"
+CRON_CMD_1="0 1 * * * cd $SKILL_DIR && $PYTHON $SCRIPT_DIR/stock_tracker.py --source cninfo --group 持仓 --days 15 --fetch-content >> $SKILL_DIR/logs/stock_tracker.log 2>&1"
+CRON_CMD_2="0 7 * * * cd $SKILL_DIR && $PYTHON $SCRIPT_DIR/stock_tracker.py --source cninfo --group 持仓 --days 15 --fetch-content >> $SKILL_DIR/logs/stock_tracker.log 2>&1"
 
 EXISTING=$(crontab -l 2>/dev/null || true)
 
-if echo "$EXISTING" | grep -qF "$SCRIPT_DIR/stock_watcher.py"; then
+if echo "$EXISTING" | grep -qF "$SCRIPT_DIR/stock_tracker.py"; then
     echo "  [OK] 定时任务已存在，跳过。如需更新请手动编辑 crontab。"
 else
     (
@@ -131,7 +131,7 @@ echo "下一步:"
 echo "  1. 将东方财富 Cookie 写入 $SKILL_DIR/cookie.txt"
 echo "  2. （可选）在 $SKILL_DIR/.env 中配置 LLM_API_KEY 开启 AI 筛选"
 echo "  3. 完整运行测试:"
-echo "     cd $SKILL_DIR && $PYTHON $SCRIPT_DIR/stock_watcher.py --source cninfo --group 持仓 --days 15 --fetch-content"
+echo "     cd $SKILL_DIR && $PYTHON $SCRIPT_DIR/stock_tracker.py --source cninfo --group 持仓 --days 15 --fetch-content"
 echo "  4. 查看运行日志:"
-echo "     tail -f $SKILL_DIR/logs/stock_watcher_*.log"
+echo "     tail -f $SKILL_DIR/logs/stock_tracker_*.log"
 echo ""
