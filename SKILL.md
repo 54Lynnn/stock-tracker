@@ -172,3 +172,7 @@ openclaw cron add \
 ---
 
 完整技术文档、公告分类体系、Token 消耗分析等详见 [GitHub](https://github.com/54Lynnn/stock-watcher-pro)
+
+## 开源
+
+- **GitHub**: [github.com/54Lynnn/stock-watcher-pro](https://github.com/54Lynnn/stock-watcher-pro)
