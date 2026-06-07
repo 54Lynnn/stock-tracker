@@ -171,22 +171,4 @@ openclaw cron add \
 ```
 ---
 
-## 依赖
-
-- Python 3.9+
-- `requests` — HTTP 请求
-- `pdfplumber` — PDF 文本提取
-- `flask` — Web 仪表盘
-- `sqlite3` — 数据库（Python 内置）
-- `playwright`（可选） — Cookie 自动续签
-
-## 注意事项
-
-1. **Cookie 会过期**（几天到几周），过期后 `run.sh` 会尝试自动续签，失败则需手动更新
-2. **LLM 可选** — 未配置 API Key 时自动禁用，仅使用正则过滤，不影响基本功能
-3. **增量抓取** — 已存在的公告（通过 ann_id 去重）不会重复抓取
-4. **超长文档** — 通函、会议资料等 >5000 字的文档只提取目录，减少 LLM token 消耗
-
----
-
 完整技术文档、公告分类体系、Token 消耗分析等详见 [GitHub](https://github.com/54Lynnn/stock-watcher-pro)
