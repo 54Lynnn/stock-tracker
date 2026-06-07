@@ -97,21 +97,6 @@ bash dashboard.sh mygroup 15 eastmoney
 
 ---
 
-## 工具命令
-
-不通过 `run.sh` / `dashboard.sh`，直接操作数据库或查看数据：
-
-```bash
-python3 scripts/stock_watcher.py --stats              # 数据库统计
-python3 scripts/stock_watcher.py --list               # 最近公告
-python3 scripts/stock_watcher.py --list --stock 600519 --days 30  # 指定股票
-python3 scripts/stock_watcher.py --list-groups        # 可用分组
-python3 scripts/stock_watcher.py --clean              # 清洗已有正文
-python3 scripts/stock_watcher.py --prune              # 清理无正文的空记录
-```
-
----
-
 ## 首次设置
 
 ### 1. 安装依赖
