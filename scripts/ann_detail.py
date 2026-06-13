@@ -48,8 +48,18 @@ SKIP_CONTENT_PATTERNS = [
     # 薪酬制度、股东周年会通告、担保额度、业绩说明会召开情况
     re.compile(r"薪酬", re.IGNORECASE),
     re.compile(r"周年会通告", re.IGNORECASE),
-    re.compile(r"担保额度", re.IGNORECASE),
+    re.compile(r"担保额度|提供担保|为.*担保|担保公告|合计.*担保", re.IGNORECASE),
     re.compile(r"召开情况", re.IGNORECASE),
+    # 公司内部制度文件（离职管理制度、议事规则、工作细则等）
+    re.compile(r"管理制度|议事规则|工作细则|管理规则|内控手册|合规手册", re.IGNORECASE),
+    # 回购注销股权激励的限制性股票（量小无影响，保留普通回购注销）
+    re.compile(r"回购注销.*(?:股权激励|限制性股票|激励对象)", re.IGNORECASE),
+    # 业绩说明会（纯形式，无实质内容）
+    re.compile(r"业绩说明会|业绩发布会|召开情况", re.IGNORECASE),
+    # 限制性股票/股票期权授予登记（常规程序性公告）
+    re.compile(r"限制性股票.*(?:预留授予|完成登记)|股票期权.*(?:预留授予|完成登记)", re.IGNORECASE),
+    # 限制性股票作废（量小无市场影响）
+    re.compile(r"作废.*限制性股票|限制性股票.*作废", re.IGNORECASE),
 ]
 PDF_BASE = "https://pdf.dfcfw.com/pdf/H2_{art_code}_1.pdf"
 HEADERS = {
