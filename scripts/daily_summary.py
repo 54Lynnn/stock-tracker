@@ -193,7 +193,7 @@ def call_llm(prompt: str, max_tokens: int = 10000, json_mode: bool = False, retr
         logger.warning("LLM_API_KEY 未配置")
         return ""
 
-    config: Any = config_manager.load()
+    config: AppConfig = config_manager.load()
     base_url: str = config.llm.base_url
     model: str = config.llm.model
     timeout: int = config.llm.timeout

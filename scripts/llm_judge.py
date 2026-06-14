@@ -257,7 +257,7 @@ class LLMJudge:
         )
 
     @classmethod
-    def from_config(cls, config: Any) -> "LLMJudge":
+    def from_config(cls, config) -> "LLMJudge":
         """从配置创建 LLMJudge 实例
 
         api_key 优先从 .env 文件读取（LLM_API_KEY 变量），

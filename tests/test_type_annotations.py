@@ -1,9 +1,6 @@
 """类型注解测试模块 - 验证所有模块的类型注解"""
 
 import ast
-import os
-import sys
-import inspect
 from pathlib import Path
 from typing import Any
 
@@ -176,14 +173,22 @@ class TestStockTrackerTypeAnnotations:
         filepath = SCRIPTS_DIR / "stock_tracker.py"
         tree = parse_python_file(filepath)
         
+        # 检查关键常量是否有类型注解
+        annotated_constants = {"SKILL_DIR", "DEFAULT_CONFIG", "DEFAULT_COOKIE", "DEFAULT_LOG_DIR"}
+        found_constants = set()
+        
         for node in ast.iter_child_nodes(tree):
             if isinstance(node, ast.Assign):
                 for target in node.targets:
-                    if isinstance(target, ast.Name):
-                        # 检查是否有类型注解
-                        if target.id.isupper():  # 常量通常大写
-                            # 这些常量应该有类型注解
-                            pass  # 宽松检查
+                    if isinstance(target, ast.Name) and target.id in annotated_constants:
+                        found_constants.add(target.id)
+                        # 检查是否有类型注解（通过annotation属性）
+                        assert hasattr(target, 'annotation') and target.annotation is not None, \
+                            f"Constant {target.id} should have a type annotation"
+        
+        # 确保所有关键常量都被找到
+        assert annotated_constants.issubset(found_constants), \
+            f"Missing annotated constants: {annotated_constants - found_constants}"
 
 
 class TestAnnDetailTypeAnnotations:
