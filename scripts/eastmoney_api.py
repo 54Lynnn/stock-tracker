@@ -248,6 +248,7 @@ def fetch_announcements(
                 "url": ann_url,
                 "art_code": art_code,
                 "notice_id": str(ann.get("notice_date", "")),  # 实际存的是日期，字段名兼容旧数据
+                "display_time_dfcf": ann.get("display_time", ""),
                 "market": market,
             })
         logger.debug(

@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS announcements (
     full_text   TEXT,
     clean_text  TEXT,
     attach_url  TEXT,
+    display_time_dfcf TEXT,    -- 东方财富显示时间
     first_seen_at TEXT DEFAULT (datetime('now', 'localtime'))
 )
 """
@@ -55,8 +56,8 @@ CREATE_INDEXES_SQL: list[str] = [
 INSERT_SQL: str = """
 INSERT INTO announcements
     (ann_id, stock_code, stock_name, title, ann_date, ann_type,
-     url, art_code, notice_id, full_text, clean_text, attach_url, status, ann_type_tag, ann_type_category, clean_text_length)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     url, art_code, notice_id, full_text, clean_text, attach_url, display_time_dfcf, status, ann_type_tag, ann_type_category, clean_text_length)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(ann_id) DO UPDATE SET
     stock_code = excluded.stock_code,
     stock_name = CASE WHEN excluded.stock_name != '' THEN excluded.stock_name ELSE announcements.stock_name END,
@@ -69,6 +70,7 @@ ON CONFLICT(ann_id) DO UPDATE SET
     full_text = CASE WHEN excluded.full_text != '' THEN excluded.full_text ELSE announcements.full_text END,
     clean_text = CASE WHEN excluded.clean_text != '' THEN excluded.clean_text ELSE announcements.clean_text END,
     attach_url = CASE WHEN excluded.attach_url != '' THEN excluded.attach_url ELSE announcements.attach_url END,
+    display_time_dfcf = CASE WHEN excluded.display_time_dfcf != '' THEN excluded.display_time_dfcf ELSE announcements.display_time_dfcf END,
     status = CASE WHEN excluded.status != '' THEN excluded.status ELSE announcements.status END,
     ann_type_tag = CASE WHEN excluded.ann_type_tag != '' THEN excluded.ann_type_tag ELSE announcements.ann_type_tag END,
     ann_type_category = CASE WHEN excluded.ann_type_category != '' THEN excluded.ann_type_category ELSE announcements.ann_type_category END,
@@ -97,7 +99,7 @@ def _get_conn() -> sqlite3.Connection:
 
 
 def _migrate_schema(conn: sqlite3.Connection) -> None:
-    for col, col_def in [("full_text", "TEXT"), ("clean_text", "TEXT"), ("attach_url", "TEXT"), ("summary", "TEXT"), ("status", "TEXT DEFAULT 'valuable'"), ("ann_type_tag", "TEXT DEFAULT ''"), ("ann_type_category", "TEXT DEFAULT ''"), ("clean_text_length", "INTEGER DEFAULT 0")]:
+    for col, col_def in [("full_text", "TEXT"), ("clean_text", "TEXT"), ("attach_url", "TEXT"), ("summary", "TEXT"), ("status", "TEXT DEFAULT 'valuable'"), ("ann_type_tag", "TEXT DEFAULT ''"), ("ann_type_category", "TEXT DEFAULT ''"), ("clean_text_length", "INTEGER DEFAULT 0"), ("display_time_dfcf", "TEXT")]:
         try:
             conn.execute(f"ALTER TABLE announcements ADD COLUMN {col} {col_def}")
             logger.info("数据库迁移: 新增字段 %s", col)
@@ -184,6 +186,7 @@ def record_announcements(announcements: list[dict[str, Any]]) -> None:
                     ann.get("full_text", ""),
                     ann.get("clean_text", ""),
                     ann.get("attach_url", ""),
+                    ann.get("display_time_dfcf", ""),
                     ann.get("status", "filtered"),
                     ann.get("ann_type_tag", ""),
                     ann.get("ann_type_category", ""),
@@ -286,7 +289,8 @@ def get_announcements_for_stock(stock_code: str, days: int = 30) -> list[dict[st
     try:
         rows: list[tuple[Any, ...]] = conn.execute("""
             SELECT ann_id, stock_code, stock_name, title, ann_date,
-                   clean_text, summary, url, attach_url, first_seen_at, ann_type_tag, ann_type_category
+                   clean_text, summary, url, attach_url, first_seen_at, ann_type_tag, ann_type_category,
+                   display_time_dfcf
             FROM announcements
             WHERE stock_code = ? AND ann_date >= date('now', ? || ' days')
               AND status = 'valuable'
@@ -299,6 +303,7 @@ def get_announcements_for_stock(stock_code: str, days: int = 30) -> list[dict[st
                 "summary": r[6], "url": r[7], "attach_url": r[8],
                 "first_seen_at": r[9], "ann_type_tag": r[10] if len(r) > 10 else "",
                 "ann_type_category": r[11] if len(r) > 11 else "",
+                "display_time_dfcf": r[12] if len(r) > 12 else "",
             }
             for r in rows
         ]

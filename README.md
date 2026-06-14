@@ -90,6 +90,20 @@ stock-tracker/
   run.sh                # Agent Run 模式
   dashboard.sh          # Dashboard 模式
   scripts/              # Python 脚本
+    stock_tracker.py    # 主入口
+    eastmoney_api.py    # 东方财富 API
+    cninfo_api.py       # 巨潮资讯 API
+    ann_detail.py       # 公告详情获取
+    llm_judge.py        # LLM 标题判断
+    text_cleaner.py     # 正文清洗
+    daily_summary.py    # 摘要生成
+    db.py               # 数据库操作
+    dashboard.py        # Flask 仪表盘
+    refresh_cookie.py   # Cookie 自动续签
+    dependencies.py     # 依赖管理
+    error_handler.py    # 错误处理
+    config_manager.py   # 配置管理
+  tests/                # 单元测试
   logs/                 # 运行日志
   .stock-tracker-state/ # SQLite 数据库
   references/           # 技术参考文档
@@ -122,6 +136,41 @@ LLM_API_KEY=sk-your-api-key-here
 ### 数据源
 
 默认全部走东方财富 API（A股+港股）。指定 `--source cninfo` 时 A 股走巨潮资讯网（PDF 更稳定），港股仍走东方财富。
+
+## 数据库字段
+
+| 字段 | 说明 |
+|------|------|
+| `ann_id` | 公告唯一标识 |
+| `stock_code` | 股票代码 |
+| `stock_name` | 股票名称 |
+| `title` | 公告标题 |
+| `ann_date` | 公告日期 |
+| `ann_type` | 公告类型 |
+| `url` | 公告链接 |
+| `art_code` | 文章编码 |
+| `full_text` | 原始正文 |
+| `clean_text` | 清洗后正文 |
+| `status` | 状态（valuable/filtered） |
+| `ann_type_tag` | 小类标签 |
+| `ann_type_category` | 大类标签 |
+| `display_time_dfcf` | 东方财富显示时间 |
+| `summary` | LLM 摘要 |
+| `first_seen_at` | 首次抓取时间 |
+
+## 单元测试
+
+```bash
+# 运行所有测试
+python3 -m pytest tests/ -v
+
+# 运行特定模块测试
+python3 -m pytest tests/test_text_cleaner.py -v
+python3 -m pytest tests/test_llm_judge.py -v
+python3 -m pytest tests/test_db.py -v
+```
+
+当前共 107 个单元测试，覆盖所有核心模块。
 
 ---
 

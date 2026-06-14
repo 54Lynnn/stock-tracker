@@ -204,6 +204,7 @@ async function toggleStock(row) {
     html += '<div class="ann-item">';
     html += `<div class="ann-title" onclick="toggleText('${textId}')">${a.title}${tagHtml}</div>`;
     html += `<div class="ann-date">${a.ann_date}`;
+    if (a.display_time_dfcf) html += ` (显示时间: ${a.display_time_dfcf})`;
     if (a.url) html += ` &middot; <a class="ann-link" href="${a.url.replace(/"/g, '&quot;')}" target="_blank">查看原文</a>`;
     html += '</div>';
     if (a.summary) {
@@ -272,11 +273,11 @@ def api_announcements(stock_code):
         return jsonify({"error": "股票代码格式错误"}), 400
     data = db.get_announcements_for_stock(stock_code, days=30)
     for item in data:
-        item["title"] = html.escape(item.get("title", ""))
-        item["summary"] = html.escape(item.get("summary", ""))
-        item["clean_text"] = html.escape(item.get("clean_text", ""))
-        item["ann_type_category"] = html.escape(item.get("ann_type_category", ""))
-        item["ann_type_tag"] = html.escape(item.get("ann_type_tag", ""))
+        item["title"] = html.escape(item.get("title") or "")
+        item["summary"] = html.escape(item.get("summary") or "")
+        item["clean_text"] = html.escape(item.get("clean_text") or "")
+        item["ann_type_category"] = html.escape(item.get("ann_type_category") or "")
+        item["ann_type_tag"] = html.escape(item.get("ann_type_tag") or "")
     return jsonify(data)
 
 
