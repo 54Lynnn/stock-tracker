@@ -32,7 +32,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from dependencies import get_db, get_llm_judge, get_text_cleaner, get_ann_detail, get_eastmoney_api, get_cninfo_api
-from error_handler import DatabaseError, APIError, ConfigError, CookieError, handle_error, safe_execute
+from error_handler import DatabaseError, APIError, ConfigError, CookieError, DataError, handle_error, safe_execute
 from config_manager import ConfigManager, AppConfig, NotifyConfig
 
 db = get_db()
@@ -324,7 +324,7 @@ def handle_main_flow(parsed: argparse.Namespace) -> None:
         cookie: Optional[str] = load_cookie(DEFAULT_COOKIE)
         stocks: list[dict[str, Any]] = get_stocks(DEFAULT_COOKIE, group_name=parsed.group)
         if not stocks:
-            raise CookieError("未获取到自选股列表，请检查 cookie.txt 或 config.json")
+            raise DataError("未获取到自选股列表，请检查 cookie.txt 或 config.json")
 
         logger.info("自选股共 %d 只:", len(stocks))
         for s in stocks:
@@ -352,16 +352,6 @@ def handle_main_flow(parsed: argparse.Namespace) -> None:
                         stats["total"], stats["with_content"])
 
         logger.info("运行完成\n")
-    except DatabaseError as e:
-        handle_error(e, "数据库错误", exit_on_error=True)
-    except APIError as e:
-        handle_error(e, "API调用错误", exit_on_error=True)
-    except ConfigError as e:
-        handle_error(e, "配置错误", exit_on_error=True)
-    except CookieError as e:
-        handle_error(e, "Cookie错误", exit_on_error=True)
-    except Exception as e:
-        handle_error(e, "未知错误", exit_on_error=True)
 
 
 def run(args: Optional[list[str]] = None) -> None:

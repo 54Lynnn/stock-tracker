@@ -28,7 +28,11 @@ class CookieError(StockTrackerError):
     """Cookie相关错误"""
     pass
 
-def handle_error(error: Exception, context: str = "", exit_on_error: bool = False) -> bool:
+class DataError(StockTrackerError):
+    """数据相关错误"""
+    pass
+
+def handle_error(error: Exception, context: str = "", exit_on_error: bool = False) -> None:
     """统一错误处理"""
     if isinstance(error, StockTrackerError):
         logger.error(f"{context}: {error} (code: {error.code})")
@@ -37,7 +41,6 @@ def handle_error(error: Exception, context: str = "", exit_on_error: bool = Fals
     
     if exit_on_error:
         sys.exit(1)
-    return False
 
 def safe_execute(func: Callable[..., Any], *args: Any, exit_on_error: bool = False, **kwargs: Any) -> Any:
     """安全执行函数，捕获异常"""

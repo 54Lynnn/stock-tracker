@@ -87,7 +87,6 @@ def main():
         return
 
     # 加载 config.json 中的 LLM 配置（包含正确的 base_url）
-    import json as _json
     config_manager = ConfigManager()
     config = config_manager.load()
     judge = LLMJudge.from_config(config)
