@@ -136,140 +136,168 @@ def _notify_webhook(notify_cfg: dict, new_anns: list[dict]):
         logger.warning("Webhook 通知发送失败: %s", e)
 
 
-def run(args=None):
-    parser = argparse.ArgumentParser(description="东方财富自选股公告追踪")
-    parser.add_argument("--force", action="store_true", help="强制重新抓取所有公告")
-    parser.add_argument("--days", type=int, default=None, help="抓取最近N天的公告")
-    parser.add_argument("--dry-run", action="store_true", help="试运行（不更新状态）")
-    parser.add_argument("--config", default=DEFAULT_CONFIG, help="配置文件路径")
-    parser.add_argument("--group", "-g", default=None, help="只追踪指定分组（模糊匹配，如 持仓/hk/自选）")
-    parser.add_argument("--list-groups", action="store_true", help="列出所有可用分组")
-    parser.add_argument("--stats", action="store_true", help="查看数据库统计信息")
-    parser.add_argument("--list", action="store_true", help="列出历史公告")
-    parser.add_argument("--stock", default=None, help="配合 --list 使用，筛选指定股票代码")
-    parser.add_argument("--fetch-content", action="store_true", help="获取公告全文并存入数据库")
-    parser.add_argument("--clean", action="store_true", help="清洗已获取的公告正文（移除模板套话）")
-    parser.add_argument("--prune", action="store_true", help="清理无正文的空记录")
-    parser.add_argument("--source", choices=["eastmoney", "cninfo"], default="eastmoney",
-                        help="数据来源: eastmoney（东方财富，A股+港股）或 cninfo（巨潮A股+东方财富港股，推荐）")
-    parsed = parser.parse_args(args)
+def _backup_database():
+    bak_path = db.DB_PATH + ".bak"
+    try:
+        shutil.copy2(db.DB_PATH, bak_path)
+        logger.debug("数据库已备份: %s", bak_path)
+    except OSError as e:
+        logger.warning("数据库备份失败: %s", e)
 
-    setup_logging()
 
-    # 自动备份数据库（保留上一次的快照）
-    if os.path.exists(db.DB_PATH) and not parsed.stats and not parsed.list and not parsed.list_groups:
-        bak_path = db.DB_PATH + ".bak"
-        try:
-            shutil.copy2(db.DB_PATH, bak_path)
-            logger.debug("数据库已备份: %s", bak_path)
-        except OSError as e:
-            logger.warning("数据库备份失败: %s", e)
+def handle_stats():
+    """处理 --stats 子命令：查看数据库统计信息"""
+    stats = db.get_stats()
+    print(f"\n数据库统计:")
+    print(f"  总公告数: {stats['total']}")
+    pct = (stats['with_content'] / stats['total'] * 100) if stats['total'] else 0
+    print(f"  含正文: {stats['with_content']} ({pct:.1f}%)")
+    print(f"  追踪股票数: {stats['stocks_tracked']}")
+    print(f"  最后更新: {stats['latest_update']}")
+    print(f"  数据库路径: {db.DB_PATH}")
 
-    if parsed.stats:
+    east_total = db._count_by_source("eastmoney")
+    cninfo_total = db._count_by_source("cninfo")
+    print(f"  来源: 东方财富 {east_total} 条 / 巨潮资讯 {cninfo_total} 条")
+
+    need_clean = len(db.get_records_needing_clean())
+    if need_clean:
+        print(f"  待清洗: {need_clean} 条（运行 --clean 清洗）")
+    need_content = len(db.get_pending_content())
+    if need_content:
+        print(f"  待采集全文: {need_content} 条（运行 --fetch-content 采集）")
+
+
+def handle_clean():
+    """处理 --clean 子命令：清洗公告正文"""
+    pending = db.get_records_needing_clean()
+    if not pending:
+        logger.info("所有公告正文已清洗，无需处理")
+        return
+    logger.info("正在清洗 %d 条公告正文...", len(pending))
+    total_orig = 0
+    total_clean = 0
+    for ann in pending:
+        raw_text = ann.get("full_text", "")
+        if not raw_text:
+            continue
+        cleaned = clean_announcement_text(raw_text)
+        ann["clean_text"] = cleaned
+        total_orig += len(raw_text)
+        total_clean += len(cleaned)
+    db.update_clean_text(pending)
+    saved_pct = ((total_orig - total_clean) / total_orig * 100) if total_orig else 0
+    logger.info("清洗完成: %d 条, %s → %s 字 (节省 %.1f%%)",
+                len(pending), f"{total_orig:,}", f"{total_clean:,}", saved_pct)
+
+
+def handle_prune():
+    """处理 --prune 子命令：清理无正文的空记录"""
+    deleted = db.prune_empty()
+    logger.info("清理完成，删除了 %d 条记录", deleted)
+
+
+def handle_list(parsed):
+    """处理 --list 子命令：列出历史公告"""
+    days = parsed.days or 30
+    stock_codes = None
+    if parsed.group:
+        group_stocks = get_stocks(DEFAULT_COOKIE, group_name=parsed.group)
+        if group_stocks:
+            stock_codes = [s["code"] for s in group_stocks]
+            logger.info("分组 [%s] 包含 %d 只股票", parsed.group, len(stock_codes))
+        else:
+            logger.warning("分组 [%s] 未获取到股票", parsed.group)
+    anns = db.list_announcements(stock_code=parsed.stock, stock_codes=stock_codes, days=days)
+    if not anns:
+        print("暂无公告记录")
+        return
+    print(f"\n最近 {days} 天公告记录 ({len(anns)} 条):")
+    print("-" * 80)
+    for i, ann in enumerate(anns, 1):
+        print(f"\n  {i}. {ann['stock_name']} ({ann['stock_code']})  [{ann['ann_date']}]")
+        print(f"     {ann['title']}")
+        print(f"     类型: {ann['ann_type']} | 首次发现: {ann['first_seen_at']}")
+        print(f"     {ann['url']}")
+    print("-" * 80)
+
+
+def handle_list_groups():
+    """处理 --list-groups 子命令：列出所有可用分组"""
+    cookie = load_cookie(DEFAULT_COOKIE)
+    if not cookie:
+        logger.error("需要 cookie.txt 才能获取分组列表")
+        sys.exit(1)
+    groups = get_groups(cookie)
+    if groups:
+        logger.info("可用分组:")
+        for g in groups:
+            logger.info("  gid=%s  gname=%s", g.get("gid"), g.get("gname"))
+    else:
+        logger.warning("未获取到分组列表")
+
+
+def handle_fetch_content(parsed, llm_judge):
+    """处理 --fetch-content 子命令：补抓缺少全文的公告"""
+    pending = db.get_pending_content()
+    if not pending:
+        logger.info("数据库中没有待获取全文的公告")
+    else:
+        logger.info("正在补抓 %d 条缺少全文的公告（分批保存）...", len(pending))
+        fetch_all_contents(pending, save_batch=db.update_content, batch_size=10, llm_judge=llm_judge)
         stats = db.get_stats()
-        print(f"\n数据库统计:")
-        print(f"  总公告数: {stats['total']}")
-        pct = (stats['with_content'] / stats['total'] * 100) if stats['total'] else 0
-        print(f"  含正文: {stats['with_content']} ({pct:.1f}%)")
-        print(f"  追踪股票数: {stats['stocks_tracked']}")
-        print(f"  最后更新: {stats['latest_update']}")
-        print(f"  数据库路径: {db.DB_PATH}")
+        logger.info("全文获取完成（数据库共 %d 条，含正文 %d 条）",
+                     stats["total"], stats["with_content"])
+        if llm_judge.enabled:
+            logger.info(llm_judge.report())
+    db.prune_empty()
 
-        east_total = db._count_by_source("eastmoney")
-        cninfo_total = db._count_by_source("cninfo")
-        print(f"  来源: 东方财富 {east_total} 条 / 巨潮资讯 {cninfo_total} 条")
 
-        need_clean = len(db.get_records_needing_clean())
-        if need_clean:
-            print(f"  待清洗: {need_clean} 条（运行 --clean 清洗）")
-        need_content = len(db.get_pending_content())
-        if need_content:
-            print(f"  待采集全文: {need_content} 条（运行 --fetch-content 采集）")
-        return
+def _fetch_announcements(parsed, stocks, cookie, days):
+    """根据数据来源获取公告列表"""
+    if parsed.source == "cninfo":
+        a_stocks = [s for s in stocks if s.get("market") in ("0", "1")]
+        hk_stocks = [s for s in stocks if s.get("market") == "116"]
+        anns = []
+        if a_stocks:
+            logger.info("A 股 %d 只 -> 巨潮资讯网", len(a_stocks))
+            anns.extend(fetch_all_cninfo(a_stocks, days_back=days))
+        if hk_stocks:
+            logger.info("港股 %d 只 -> 东方财富", len(hk_stocks))
+            anns.extend(fetch_all_announcements(hk_stocks, cookie, days_back=days))
+    else:
+        anns = fetch_all_announcements(stocks, cookie, days_back=days)
+    return anns
 
-    if parsed.clean:
-        pending = db.get_records_needing_clean()
-        if not pending:
-            logger.info("所有公告正文已清洗，无需处理")
-        else:
-            logger.info("正在清洗 %d 条公告正文...", len(pending))
-            total_orig = 0
-            total_clean = 0
-            for ann in pending:
-                raw_text = ann.get("full_text", "")
-                if not raw_text:
-                    continue
-                cleaned = clean_announcement_text(raw_text)
-                ann["clean_text"] = cleaned
-                total_orig += len(raw_text)
-                total_clean += len(cleaned)
-            db.update_clean_text(pending)
-            saved_pct = ((total_orig - total_clean) / total_orig * 100) if total_orig else 0
-            logger.info("清洗完成: %d 条, %s → %s 字 (节省 %.1f%%)",
-                        len(pending), f"{total_orig:,}", f"{total_clean:,}", saved_pct)
-        return
 
-    if parsed.prune:
-        deleted = db.prune_empty()
-        logger.info("清理完成，删除了 %d 条记录", deleted)
-        return
+def _save_announcements(anns_to_save, parsed, llm_judge):
+    """保存公告到数据库"""
+    if parsed.fetch_content:
+        logger.info("正在获取 %d 条新公告的全文...", len(anns_to_save))
+        fetch_all_contents(anns_to_save, save_batch=db.update_content, batch_size=10, llm_judge=llm_judge)
 
-    if parsed.list:
-        days = parsed.days or 30
-        # 如果指定了 --group，先获取该分组的股票代码列表用于过滤
-        stock_codes = None
-        if parsed.group:
-            group_stocks = get_stocks(DEFAULT_COOKIE, group_name=parsed.group)
-            if group_stocks:
-                stock_codes = [s["code"] for s in group_stocks]
-                logger.info("分组 [%s] 包含 %d 只股票", parsed.group, len(stock_codes))
-            else:
-                logger.warning("分组 [%s] 未获取到股票", parsed.group)
-        anns = db.list_announcements(stock_code=parsed.stock, stock_codes=stock_codes, days=days)
-        if not anns:
-            print("暂无公告记录")
-            return
-        print(f"\n最近 {days} 天公告记录 ({len(anns)} 条):")
-        print("-" * 80)
-        for i, ann in enumerate(anns, 1):
-            print(f"\n  {i}. {ann['stock_name']} ({ann['stock_code']})  [{ann['ann_date']}]")
-            print(f"     {ann['title']}")
-            print(f"     类型: {ann['ann_type']} | 首次发现: {ann['first_seen_at']}")
-            print(f"     {ann['url']}")
-        print("-" * 80)
-        return
+    for ann in anns_to_save:
+        ann["status"] = "valuable" if ann.get("full_text") else "filtered"
+    valuable_count = sum(1 for a in anns_to_save if a["status"] == "valuable")
+    filtered_count = len(anns_to_save) - valuable_count
+    if filtered_count:
+        logger.info("%d 条有价值 / %d 条已过滤", valuable_count, filtered_count)
+    db.record_announcements(anns_to_save)
+    stats = db.get_stats()
+    logger.info("状态已保存（数据库共 %d 条，含正文 %d 条）",
+                stats["total"], stats["with_content"])
+    if parsed.fetch_content and llm_judge.enabled:
+        logger.info(llm_judge.report())
 
-    if parsed.list_groups:
-        cookie = load_cookie(DEFAULT_COOKIE)
-        if not cookie:
-            logger.error("需要 cookie.txt 才能获取分组列表")
-            sys.exit(1)
-        groups = get_groups(cookie)
-        if groups:
-            logger.info("可用分组:")
-            for g in groups:
-                logger.info("  gid=%s  gname=%s", g.get("gid"), g.get("gname"))
-        else:
-            logger.warning("未获取到分组列表")
-        return
 
+def handle_main_flow(parsed):
+    """处理主流程：获取公告、过滤、入库"""
     config = load_config(parsed.config)
     llm_judge = LLMJudge.from_config(config)
     days = parsed.days or config.get("fetch_interval_days", 7)
 
     if parsed.fetch_content:
-        pending = db.get_pending_content()
-        if not pending:
-            logger.info("数据库中没有待获取全文的公告")
-        else:
-            logger.info("正在补抓 %d 条缺少全文的公告（分批保存）...", len(pending))
-            fetch_all_contents(pending, save_batch=db.update_content, batch_size=10, llm_judge=llm_judge)
-            stats = db.get_stats()
-            logger.info("全文获取完成（数据库共 %d 条，含正文 %d 条）",
-                        stats["total"], stats["with_content"])
-            if llm_judge.enabled:
-                logger.info(llm_judge.report())
-        db.prune_empty()
+        handle_fetch_content(parsed, llm_judge)
         if not parsed.group:
             return
 
@@ -291,27 +319,12 @@ def run(args=None):
     for s in stocks:
         logger.info("  - %s (%s)", s["name"], s["code"])
 
-    if parsed.source == "cninfo":
-        a_stocks = [s for s in stocks if s.get("market") in ("0", "1")]
-        hk_stocks = [s for s in stocks if s.get("market") == "116"]
-        anns = []
-        if a_stocks:
-            logger.info("A 股 %d 只 -> 巨潮资讯网", len(a_stocks))
-            anns.extend(fetch_all_cninfo(a_stocks, days_back=days))
-        if hk_stocks:
-            logger.info("港股 %d 只 -> 东方财富", len(hk_stocks))
-            anns.extend(fetch_all_announcements(hk_stocks, cookie, days_back=days))
-    else:
-        anns = fetch_all_announcements(stocks, cookie, days_back=days)
+    anns = _fetch_announcements(parsed, stocks, cookie, days)
     logger.info("共获取 %d 条公告", len(anns))
 
     seen_ids = db.get_seen_ids() if not parsed.force else set()
 
-    new_anns = []
-    for ann in anns:
-        ann_id = db.make_ann_id(ann)
-        if ann_id not in seen_ids:
-            new_anns.append(ann)
+    new_anns = [ann for ann in anns if db.make_ann_id(ann) not in seen_ids]
 
     if new_anns:
         logger.info("发现 %d 条新公告！", len(new_anns))
@@ -321,31 +334,56 @@ def run(args=None):
 
     anns_to_save = anns if parsed.force else new_anns
     if not parsed.dry_run and anns_to_save:
-        # 先获取全文（fetch_all_contents 会修改 ann 的 full_text）
-        # 然后再根据 full_text 判断 status
-        if parsed.fetch_content:
-            logger.info("正在获取 %d 条新公告的全文...", len(anns_to_save))
-            fetch_all_contents(anns_to_save, save_batch=db.update_content, batch_size=10, llm_judge=llm_judge)
-
-        # 根据最终的 full_text 判断 status
-        for ann in anns_to_save:
-            ann["status"] = "valuable" if ann.get("full_text") else "filtered"
-        valuable_count = sum(1 for a in anns_to_save if a["status"] == "valuable")
-        filtered_count = len(anns_to_save) - valuable_count
-        if filtered_count:
-            logger.info("%d 条有价值 / %d 条已过滤", valuable_count, filtered_count)
-        db.record_announcements(anns_to_save)
-        stats = db.get_stats()
-        logger.info("状态已保存（数据库共 %d 条，含正文 %d 条）",
-                    stats["total"], stats["with_content"])
-        if parsed.fetch_content and llm_judge.enabled:
-            logger.info(llm_judge.report())
+        _save_announcements(anns_to_save, parsed, llm_judge)
     elif not parsed.dry_run and not anns_to_save:
         stats = db.get_stats()
         logger.info("状态已保存（数据库共 %d 条，含正文 %d 条）",
                     stats["total"], stats["with_content"])
 
     logger.info("运行完成\n")
+
+
+def run(args=None):
+    parser = argparse.ArgumentParser(description="东方财富自选股公告追踪")
+    parser.add_argument("--force", action="store_true", help="强制重新抓取所有公告")
+    parser.add_argument("--days", type=int, default=None, help="抓取最近N天的公告")
+    parser.add_argument("--dry-run", action="store_true", help="试运行（不更新状态）")
+    parser.add_argument("--config", default=DEFAULT_CONFIG, help="配置文件路径")
+    parser.add_argument("--group", "-g", default=None, help="只追踪指定分组（模糊匹配，如 持仓/hk/自选）")
+    parser.add_argument("--list-groups", action="store_true", help="列出所有可用分组")
+    parser.add_argument("--stats", action="store_true", help="查看数据库统计信息")
+    parser.add_argument("--list", action="store_true", help="列出历史公告")
+    parser.add_argument("--stock", default=None, help="配合 --list 使用，筛选指定股票代码")
+    parser.add_argument("--fetch-content", action="store_true", help="获取公告全文并存入数据库")
+    parser.add_argument("--clean", action="store_true", help="清洗已获取的公告正文（移除模板套话）")
+    parser.add_argument("--prune", action="store_true", help="清理无正文的空记录")
+    parser.add_argument("--source", choices=["eastmoney", "cninfo"], default="eastmoney",
+                        help="数据来源: eastmoney（东方财富，A股+港股）或 cninfo（巨潮A股+东方财富港股，推荐）")
+    parsed = parser.parse_args(args)
+
+    setup_logging()
+
+    if os.path.exists(db.DB_PATH) and not parsed.stats and not parsed.list and not parsed.list_groups:
+        _backup_database()
+
+    # 子命令分发
+    if parsed.stats:
+        handle_stats()
+        return
+    if parsed.clean:
+        handle_clean()
+        return
+    if parsed.prune:
+        handle_prune()
+        return
+    if parsed.list:
+        handle_list(parsed)
+        return
+    if parsed.list_groups:
+        handle_list_groups()
+        return
+
+    handle_main_flow(parsed)
 
 
 if __name__ == "__main__":
