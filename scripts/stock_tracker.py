@@ -31,6 +31,7 @@ import sys
 from datetime import datetime
 
 from dependencies import get_db, get_llm_judge, get_text_cleaner, get_ann_detail, get_eastmoney_api, get_cninfo_api
+from error_handler import DatabaseError, APIError, ConfigError, CookieError, handle_error, safe_execute
 
 db = get_db()
 LLMJudge = get_llm_judge()
@@ -301,55 +302,65 @@ def _save_announcements(anns_to_save, parsed, llm_judge):
 
 def handle_main_flow(parsed):
     """处理主流程：获取公告、过滤、入库"""
-    config = load_config(parsed.config)
-    llm_judge = LLMJudge.from_config(config)
-    days = parsed.days or config.get("fetch_interval_days", 7)
+    try:
+        config = load_config(parsed.config)
+        llm_judge = LLMJudge.from_config(config)
+        days = parsed.days or config.get("fetch_interval_days", 7)
 
-    if parsed.fetch_content:
-        handle_fetch_content(parsed, llm_judge)
-        if not parsed.group:
-            return
+        if parsed.fetch_content:
+            handle_fetch_content(parsed, llm_judge)
+            if not parsed.group:
+                return
 
-    logger.info("=" * 50)
-    logger.info("自选股公告追踪 - 开始运行")
-    logger.info("=" * 50)
-    logger.info("数据来源: %s", "巨潮+A股 / 东方财富+港股" if parsed.source == "cninfo" else "东方财富")
-    logger.info("抓取窗口: 最近 %d 天", days)
-    if parsed.group:
-        logger.info("筛选分组: %s", parsed.group)
+        logger.info("=" * 50)
+        logger.info("自选股公告追踪 - 开始运行")
+        logger.info("=" * 50)
+        logger.info("数据来源: %s", "巨潮+A股 / 东方财富+港股" if parsed.source == "cninfo" else "东方财富")
+        logger.info("抓取窗口: 最近 %d 天", days)
+        if parsed.group:
+            logger.info("筛选分组: %s", parsed.group)
 
-    cookie = load_cookie(DEFAULT_COOKIE)
-    stocks = get_stocks(DEFAULT_COOKIE, group_name=parsed.group)
-    if not stocks:
-        logger.error("未获取到自选股列表，请检查 cookie.txt 或 config.json")
-        sys.exit(1)
+        cookie = load_cookie(DEFAULT_COOKIE)
+        stocks = get_stocks(DEFAULT_COOKIE, group_name=parsed.group)
+        if not stocks:
+            raise CookieError("未获取到自选股列表，请检查 cookie.txt 或 config.json")
 
-    logger.info("自选股共 %d 只:", len(stocks))
-    for s in stocks:
-        logger.info("  - %s (%s)", s["name"], s["code"])
+        logger.info("自选股共 %d 只:", len(stocks))
+        for s in stocks:
+            logger.info("  - %s (%s)", s["name"], s["code"])
 
-    anns = _fetch_announcements(parsed, stocks, cookie, days)
-    logger.info("共获取 %d 条公告", len(anns))
+        anns = _fetch_announcements(parsed, stocks, cookie, days)
+        logger.info("共获取 %d 条公告", len(anns))
 
-    seen_ids = db.get_seen_ids() if not parsed.force else set()
+        seen_ids = db.get_seen_ids() if not parsed.force else set()
 
-    new_anns = [ann for ann in anns if db.make_ann_id(ann) not in seen_ids]
+        new_anns = [ann for ann in anns if db.make_ann_id(ann) not in seen_ids]
 
-    if new_anns:
-        logger.info("发现 %d 条新公告！", len(new_anns))
-        send_notification(config, new_anns)
-    else:
-        logger.info("暂无新公告")
+        if new_anns:
+            logger.info("发现 %d 条新公告！", len(new_anns))
+            send_notification(config, new_anns)
+        else:
+            logger.info("暂无新公告")
 
-    anns_to_save = anns if parsed.force else new_anns
-    if not parsed.dry_run and anns_to_save:
-        _save_announcements(anns_to_save, parsed, llm_judge)
-    elif not parsed.dry_run and not anns_to_save:
-        stats = db.get_stats()
-        logger.info("状态已保存（数据库共 %d 条，含正文 %d 条）",
-                    stats["total"], stats["with_content"])
+        anns_to_save = anns if parsed.force else new_anns
+        if not parsed.dry_run and anns_to_save:
+            _save_announcements(anns_to_save, parsed, llm_judge)
+        elif not parsed.dry_run and not anns_to_save:
+            stats = db.get_stats()
+            logger.info("状态已保存（数据库共 %d 条，含正文 %d 条）",
+                        stats["total"], stats["with_content"])
 
-    logger.info("运行完成\n")
+        logger.info("运行完成\n")
+    except DatabaseError as e:
+        handle_error(e, "数据库错误", exit_on_error=True)
+    except APIError as e:
+        handle_error(e, "API调用错误", exit_on_error=True)
+    except ConfigError as e:
+        handle_error(e, "配置错误", exit_on_error=True)
+    except CookieError as e:
+        handle_error(e, "Cookie错误", exit_on_error=True)
+    except Exception as e:
+        handle_error(e, "未知错误", exit_on_error=True)
 
 
 def run(args=None):

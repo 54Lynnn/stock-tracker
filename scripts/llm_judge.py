@@ -14,6 +14,8 @@ from typing import Optional
 
 import requests
 
+from error_handler import APIError, handle_error
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -257,16 +259,17 @@ class LLMJudge:
 
                 return result
 
-            except (requests.RequestException, json.JSONDecodeError) as e:
-                logger.warning(
-                    "LLM 调用失败 (attempt %d/%d): %s", attempt + 1, self.retries + 1, e
-                )
+            except requests.RequestException as e:
+                handle_error(APIError(f"LLM调用失败: {e}"), context="LLMJudge.judge")
                 if attempt < self.retries:
                     time.sleep((attempt + 1) * 2)
                 continue
+            except json.JSONDecodeError as e:
+                handle_error(APIError(f"LLM响应解析失败: {e}"), context="LLMJudge.judge")
+                continue
 
         self.stats["error"] += 1
-        logger.warning("LLM 调用全部失败，默认视为有价值: [%s] %s", stock_name, title[:40])
+        handle_error(APIError("LLM调用全部失败"), context="LLMJudge.judge")
         return {"valuable": True, "category": "一般公告类", "type": "个股其他公告"}
 
     def report(self) -> str:
