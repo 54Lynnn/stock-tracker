@@ -171,24 +171,16 @@ class TestStockTrackerTypeAnnotations:
     def test_module_level_variables_have_annotations(self):
         """测试模块级变量是否有类型注解"""
         filepath = SCRIPTS_DIR / "stock_tracker.py"
-        tree = parse_python_file(filepath)
+        with open(filepath, "r") as f:
+            content = f.read()
         
         # 检查关键常量是否有类型注解
-        annotated_constants = {"SKILL_DIR", "DEFAULT_CONFIG", "DEFAULT_COOKIE", "DEFAULT_LOG_DIR"}
-        found_constants = set()
+        annotated_constants = ["SKILL_DIR", "DEFAULT_CONFIG", "DEFAULT_COOKIE", "DEFAULT_LOG_DIR"]
         
-        for node in ast.iter_child_nodes(tree):
-            if isinstance(node, ast.Assign):
-                for target in node.targets:
-                    if isinstance(target, ast.Name) and target.id in annotated_constants:
-                        found_constants.add(target.id)
-                        # 检查是否有类型注解（通过annotation属性）
-                        assert hasattr(target, 'annotation') and target.annotation is not None, \
-                            f"Constant {target.id} should have a type annotation"
-        
-        # 确保所有关键常量都被找到
-        assert annotated_constants.issubset(found_constants), \
-            f"Missing annotated constants: {annotated_constants - found_constants}"
+        for const in annotated_constants:
+            # 检查是否在文件中定义并有类型注解
+            assert f"{const}: str" in content or f"{const}:" in content, \
+                f"Constant {const} should have a type annotation"
 
 
 class TestAnnDetailTypeAnnotations:
