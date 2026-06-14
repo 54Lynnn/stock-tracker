@@ -30,12 +30,21 @@ import shutil
 import sys
 from datetime import datetime
 
-import db
-from ann_detail import fetch_all_contents
-from cninfo_api import fetch_all_cninfo
-from eastmoney_api import get_stocks, get_groups, fetch_all_announcements, load_cookie
-from llm_judge import LLMJudge
-from text_cleaner import clean_announcement_text
+from dependencies import get_db, get_llm_judge, get_text_cleaner, get_ann_detail, get_eastmoney_api, get_cninfo_api
+
+db = get_db()
+LLMJudge = get_llm_judge()
+clean_announcement_text = get_text_cleaner()
+ann_detail = get_ann_detail()
+eastmoney_api = get_eastmoney_api()
+cninfo_api = get_cninfo_api()
+
+fetch_all_contents = ann_detail.fetch_all_contents
+fetch_all_cninfo = cninfo_api.fetch_all_cninfo
+get_stocks = eastmoney_api.get_stocks
+get_groups = eastmoney_api.get_groups
+fetch_all_announcements = eastmoney_api.fetch_all_announcements
+load_cookie = eastmoney_api.load_cookie
 
 logger = logging.getLogger("stock_tracker")
 

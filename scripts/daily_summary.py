@@ -25,7 +25,9 @@ from datetime import datetime, timedelta
 import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import db
+from dependencies import get_db, get_llm_judge
+
+db = get_db()
 from llm_judge import _load_env_key
 
 logger = logging.getLogger("daily_summary")
