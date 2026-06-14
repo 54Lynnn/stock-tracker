@@ -268,12 +268,15 @@ class TestHandleMainFlow:
         mock_parsed.days = None
         mock_parsed.group = None
         with (
-            patch("stock_tracker.load_config", return_value={"fetch_interval_days": 7}),
+            patch("stock_tracker.ConfigManager") as mock_config_mgr_cls,
             patch("stock_tracker.LLMJudge") as mock_llm_cls,
             patch("stock_tracker.load_cookie"),
             patch("stock_tracker.get_stocks", return_value=[]),
             patch("stock_tracker.sys.exit") as mock_exit,
         ):
+            mock_config = MagicMock()
+            mock_config.fetch_interval_days = 7
+            mock_config_mgr_cls.return_value.load.return_value = mock_config
             mock_llm_cls.from_config.return_value = MagicMock()
             handle_main_flow(mock_parsed)
             mock_exit.assert_called_once_with(1)
@@ -300,7 +303,7 @@ class TestHandleMainFlow:
             }
         ]
         with (
-            patch("stock_tracker.load_config", return_value={"fetch_interval_days": 7}),
+            patch("stock_tracker.ConfigManager") as mock_config_mgr_cls,
             patch("stock_tracker.LLMJudge") as mock_llm_cls,
             patch("stock_tracker.load_cookie"),
             patch("stock_tracker.get_stocks", return_value=fake_stocks),
@@ -308,6 +311,9 @@ class TestHandleMainFlow:
             patch("stock_tracker.db") as mock_db,
             patch("stock_tracker.send_notification"),
         ):
+            mock_config = MagicMock()
+            mock_config.fetch_interval_days = 7
+            mock_config_mgr_cls.return_value.load.return_value = mock_config
             mock_llm_cls.from_config.return_value = MagicMock()
             mock_db.make_ann_id.return_value = "fake_id"
             mock_db.get_seen_ids.return_value = set()
