@@ -88,21 +88,6 @@ def setup_logging(log_dir: str = DEFAULT_LOG_DIR):
     _LOGGING_INITIALIZED = True
 
 
-def load_config(path: str = DEFAULT_CONFIG) -> dict:
-    default = {
-        "notify": {"type": "terminal"},
-        "fetch_interval_days": 7,
-    }
-    if os.path.exists(path):
-        try:
-            with open(path, "r") as f:
-                cfg = json.load(f)
-            default.update(cfg)
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning("配置文件加载失败: %s", e)
-    return default
-
-
 def send_notification(config: AppConfig, new_anns: list[dict]):
     notify_type = config.notify.type
     if notify_type == "terminal":

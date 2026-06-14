@@ -257,14 +257,20 @@ class LLMJudge:
         )
 
     @classmethod
-    def from_config(cls, config: dict) -> "LLMJudge":
-        """从配置字典 + .env 文件创建 LLMJudge 实例
+    def from_config(cls, config) -> "LLMJudge":
+        """从配置创建 LLMJudge 实例
 
         api_key 优先从 .env 文件读取（LLM_API_KEY 变量），
         config.json 中不再存储敏感信息。
         """
-        config_manager = ConfigManager()
-        app_config = config_manager.load()
+        from config_manager import ConfigManager, AppConfig
+        
+        if isinstance(config, AppConfig):
+            app_config = config
+            config_manager = ConfigManager()
+        else:
+            config_manager = ConfigManager()
+            app_config = config_manager.load()
         
         if not app_config.llm.enabled:
             return cls(api_key="", enabled=False)

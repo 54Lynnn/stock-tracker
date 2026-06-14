@@ -34,25 +34,6 @@ SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BATCH_SIZE = 1  # 每批处理的公告数
 
 
-def load_config() -> dict:
-    config_manager = ConfigManager()
-    config = config_manager.load()
-    return {
-        "llm": {
-            "enabled": config.llm.enabled,
-            "base_url": config.llm.base_url,
-            "model": config.llm.model,
-            "timeout": config.llm.timeout,
-            "retries": config.llm.retries,
-        },
-        "notify": {
-            "type": config.notify.type,
-            "webhook_url": config.notify.webhook_url,
-        },
-        "fetch_interval_days": config.fetch_interval_days,
-    }
-
-
 def get_unsummarized_announcements(hours: int = None, stock_codes: list[str] = None) -> list[dict]:
     """获取没有摘要的公告"""
     conn = db._get_conn()
