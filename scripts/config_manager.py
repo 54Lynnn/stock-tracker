@@ -3,9 +3,9 @@
 import json
 import os
 from typing import Any, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SKILL_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 @dataclass
 class LLMConfig:
@@ -22,19 +22,13 @@ class NotifyConfig:
 
 @dataclass
 class AppConfig:
-    llm: LLMConfig = None
-    notify: NotifyConfig = None
+    llm: LLMConfig = field(default_factory=LLMConfig)
+    notify: NotifyConfig = field(default_factory=NotifyConfig)
     fetch_interval_days: int = 7
-    
-    def __post_init__(self):
-        if self.llm is None:
-            self.llm = LLMConfig()
-        if self.notify is None:
-            self.notify = NotifyConfig()
 
 class ConfigManager:
-    def __init__(self, config_path: Optional[str] = None):
-        self.config_path = config_path or os.path.join(SKILL_DIR, "config.json")
+    def __init__(self, config_path: Optional[str] = None) -> None:
+        self.config_path: str = config_path or os.path.join(SKILL_DIR, "config.json")
         self._config: Optional[AppConfig] = None
     
     def load(self) -> AppConfig:
@@ -47,10 +41,10 @@ class ConfigManager:
         if os.path.exists(self.config_path):
             try:
                 with open(self.config_path, "r") as f:
-                    data = json.load(f)
+                    data: dict[str, Any] = json.load(f)
                 
                 # 解析LLM配置
-                llm_data = data.get("llm", {})
+                llm_data: dict[str, Any] = data.get("llm", {})
                 llm_config = LLMConfig(
                     enabled=llm_data.get("enabled", default_config.llm.enabled),
                     base_url=llm_data.get("base_url", default_config.llm.base_url),
@@ -60,7 +54,7 @@ class ConfigManager:
                 )
                 
                 # 解析通知配置
-                notify_data = data.get("notify", {})
+                notify_data: dict[str, Any] = data.get("notify", {})
                 notify_config = NotifyConfig(
                     type=notify_data.get("type", default_config.notify.type),
                     webhook_url=notify_data.get("webhook_url", default_config.notify.webhook_url),
@@ -79,9 +73,9 @@ class ConfigManager:
         
         return self._config
     
-    def save(self, config: AppConfig):
+    def save(self, config: AppConfig) -> None:
         """保存配置"""
-        data = {
+        data: dict[str, Any] = {
             "llm": {
                 "enabled": config.llm.enabled,
                 "base_url": config.llm.base_url,
@@ -103,7 +97,7 @@ class ConfigManager:
     
     def get_llm_api_key(self) -> Optional[str]:
         """获取LLM API Key"""
-        env_path = os.path.join(SKILL_DIR, ".env")
+        env_path: str = os.path.join(SKILL_DIR, ".env")
         if not os.path.exists(env_path):
             return None
         
@@ -115,7 +109,7 @@ class ConfigManager:
                         continue
                     k, _, v = line.partition("=")
                     if k.strip() == "LLM_API_KEY":
-                        val = v.strip().strip("\"'")
+                        val: str = v.strip().strip("\"'")
                         return val if val else None
         except (OSError, UnicodeDecodeError):
             return None

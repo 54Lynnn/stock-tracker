@@ -19,14 +19,15 @@ import logging
 import os
 import sqlite3
 from datetime import datetime
+from typing import Any, Optional
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
-SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STATE_DIR = os.path.join(SKILL_DIR, ".stock-tracker-state")
-DB_PATH = os.path.join(STATE_DIR, "announcements.db")
+SKILL_DIR: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATE_DIR: str = os.path.join(SKILL_DIR, ".stock-tracker-state")
+DB_PATH: str = os.path.join(STATE_DIR, "announcements.db")
 
-CREATE_TABLE_SQL = """
+CREATE_TABLE_SQL: str = """
 CREATE TABLE IF NOT EXISTS announcements (
     ann_id      TEXT PRIMARY KEY,
     stock_code  TEXT NOT NULL,
@@ -44,14 +45,14 @@ CREATE TABLE IF NOT EXISTS announcements (
 )
 """
 
-CREATE_INDEXES_SQL = [
+CREATE_INDEXES_SQL: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_stock_code ON announcements(stock_code)",
     "CREATE INDEX IF NOT EXISTS idx_ann_date ON announcements(ann_date)",
     "CREATE INDEX IF NOT EXISTS idx_first_seen ON announcements(first_seen_at)",
     "CREATE INDEX IF NOT EXISTS idx_ann_type ON announcements(ann_type)",
 ]
 
-INSERT_SQL = """
+INSERT_SQL: str = """
 INSERT INTO announcements
     (ann_id, stock_code, stock_name, title, ann_date, ann_type,
      url, art_code, notice_id, full_text, clean_text, attach_url, status, ann_type_tag, ann_type_category, clean_text_length)
@@ -74,28 +75,28 @@ ON CONFLICT(ann_id) DO UPDATE SET
     clean_text_length = CASE WHEN excluded.clean_text_length > 0 THEN excluded.clean_text_length ELSE announcements.clean_text_length END
 """
 
-UPDATE_CONTENT_SQL = """
+UPDATE_CONTENT_SQL: str = """
 UPDATE announcements SET full_text = ?, clean_text = ?, clean_text_length = ?, attach_url = ?, status = 'valuable' WHERE ann_id = ?
 """
 
-UPDATE_CLEAN_SQL = """
+UPDATE_CLEAN_SQL: str = """
 UPDATE announcements SET clean_text = ?, clean_text_length = ? WHERE ann_id = ?
 """
 
-UPDATE_SUMMARY_SQL = """
+UPDATE_SUMMARY_SQL: str = """
 UPDATE announcements SET summary = ? WHERE ann_id = ?
 """
 
 
 def _get_conn() -> sqlite3.Connection:
     os.makedirs(STATE_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn: sqlite3.Connection = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
-def _migrate_schema(conn: sqlite3.Connection):
+def _migrate_schema(conn: sqlite3.Connection) -> None:
     for col, col_def in [("full_text", "TEXT"), ("clean_text", "TEXT"), ("attach_url", "TEXT"), ("summary", "TEXT"), ("status", "TEXT DEFAULT 'valuable'"), ("ann_type_tag", "TEXT DEFAULT ''"), ("ann_type_category", "TEXT DEFAULT ''"), ("clean_text_length", "INTEGER DEFAULT 0")]:
         try:
             conn.execute(f"ALTER TABLE announcements ADD COLUMN {col} {col_def}")
@@ -104,8 +105,8 @@ def _migrate_schema(conn: sqlite3.Connection):
             pass
 
 
-def init_db():
-    conn = _get_conn()
+def init_db() -> None:
+    conn: sqlite3.Connection = _get_conn()
     try:
         conn.execute(CREATE_TABLE_SQL)
         _migrate_schema(conn)
@@ -113,22 +114,22 @@ def init_db():
             conn.execute(idx)
         conn.commit()
 
-        old_json = os.path.join(STATE_DIR, "seen_announcements.json")
+        old_json: str = os.path.join(STATE_DIR, "seen_announcements.json")
         if os.path.exists(old_json):
             _migrate_from_json(conn, old_json)
     finally:
         conn.close()
 
 
-def _migrate_from_json(conn: sqlite3.Connection, json_path: str):
-    cursor = conn.execute("SELECT COUNT(*) FROM announcements")
+def _migrate_from_json(conn: sqlite3.Connection, json_path: str) -> None:
+    cursor: sqlite3.Cursor = conn.execute("SELECT COUNT(*) FROM announcements")
     if cursor.fetchone()[0] > 0:
         logger.info("数据库已有数据，跳过 JSON 迁移")
         return
 
     try:
         with open(json_path, "r") as f:
-            hashes = json.load(f)
+            hashes: list[str] = json.load(f)
         if not hashes:
             return
 
@@ -138,7 +139,7 @@ def _migrate_from_json(conn: sqlite3.Connection, json_path: str):
                 (h, "", "", "", "", "", "", "", "", "", "", "", "filtered", "", "", 0),
             )
         conn.commit()
-        backup = json_path + ".bak"
+        backup: str = json_path + ".bak"
         os.rename(json_path, backup)
         logger.info("已从 %s 迁移 %d 条记录到 SQLite", json_path, len(hashes))
         logger.info("原 JSON 文件已备份为 %s", backup)
@@ -146,28 +147,28 @@ def _migrate_from_json(conn: sqlite3.Connection, json_path: str):
         logger.warning("JSON 迁移失败: %s", e)
 
 
-def make_ann_id(ann: dict) -> str:
-    raw = f"{ann['stock_code']}_{ann.get('art_code', '')}_{ann.get('notice_id', '')}_{ann['title']}"
+def make_ann_id(ann: dict[str, Any]) -> str:
+    raw: str = f"{ann['stock_code']}_{ann.get('art_code', '')}_{ann.get('notice_id', '')}_{ann['title']}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def get_seen_ids() -> set:
-    conn = _get_conn()
+def get_seen_ids() -> set[str]:
+    conn: sqlite3.Connection = _get_conn()
     try:
-        rows = conn.execute("SELECT ann_id FROM announcements").fetchall()
+        rows: list[tuple[str]] = conn.execute("SELECT ann_id FROM announcements").fetchall()
         return {row[0] for row in rows}
     finally:
         conn.close()
 
 
-def record_announcements(announcements: list[dict]):
+def record_announcements(announcements: list[dict[str, Any]]) -> None:
     if not announcements:
         return
-    conn = _get_conn()
+    conn: sqlite3.Connection = _get_conn()
     try:
-        count = 0
+        count: int = 0
         for ann in announcements:
-            ann_id = make_ann_id(ann)
+            ann_id: str = make_ann_id(ann)
             conn.execute(
                 INSERT_SQL,
                 (
@@ -196,17 +197,17 @@ def record_announcements(announcements: list[dict]):
         conn.close()
 
 
-def update_content(announcements: list[dict]):
-    conn = _get_conn()
+def update_content(announcements: list[dict[str, Any]]) -> None:
+    conn: sqlite3.Connection = _get_conn()
     try:
-        count = 0
+        count: int = 0
         for ann in announcements:
-            full_text = ann.get("full_text", "")
-            clean_text = ann.get("clean_text", "")
-            attach_url = ann.get("attach_url", "")
+            full_text: str = ann.get("full_text", "")
+            clean_text: str = ann.get("clean_text", "")
+            attach_url: str = ann.get("attach_url", "")
             if not full_text and not attach_url:
                 continue
-            ann_id = make_ann_id(ann)
+            ann_id: str = make_ann_id(ann)
             conn.execute(UPDATE_CONTENT_SQL, (full_text, clean_text, len(clean_text), attach_url, ann_id))
             count += 1
         conn.commit()
@@ -216,16 +217,16 @@ def update_content(announcements: list[dict]):
         conn.close()
 
 
-def update_clean_text(announcements: list[dict]):
+def update_clean_text(announcements: list[dict[str, Any]]) -> None:
     """批量更新清洗后的文本"""
-    conn = _get_conn()
+    conn: sqlite3.Connection = _get_conn()
     try:
-        count = 0
+        count: int = 0
         for ann in announcements:
-            clean_text = ann.get("clean_text", "")
+            clean_text: str = ann.get("clean_text", "")
             if not clean_text:
                 continue
-            ann_id = make_ann_id(ann)
+            ann_id: str = make_ann_id(ann)
             conn.execute(UPDATE_CLEAN_SQL, (clean_text, len(clean_text), ann_id))
             count += 1
         conn.commit()
@@ -235,11 +236,11 @@ def update_clean_text(announcements: list[dict]):
         conn.close()
 
 
-def update_summary(ann_id: str, summary: str):
+def update_summary(ann_id: str, summary: str) -> None:
     """更新单条公告的摘要"""
     if not summary:
         return
-    conn = _get_conn()
+    conn: sqlite3.Connection = _get_conn()
     try:
         conn.execute(UPDATE_SUMMARY_SQL, (summary, ann_id))
         conn.commit()
@@ -247,11 +248,11 @@ def update_summary(ann_id: str, summary: str):
         conn.close()
 
 
-def get_stock_overview() -> list[dict]:
+def get_stock_overview() -> list[dict[str, Any]]:
     """获取所有股票的概览统计（供 Web 仪表盘使用）"""
-    conn = _get_conn()
+    conn: sqlite3.Connection = _get_conn()
     try:
-        rows = conn.execute("""
+        rows: list[tuple[Any, ...]] = conn.execute("""
             SELECT stock_code, stock_name,
                    COUNT(*) as total,
                    SUM(CASE WHEN status = 'valuable' THEN 1 ELSE 0 END) as valuable_total,
@@ -279,11 +280,11 @@ def get_stock_overview() -> list[dict]:
         conn.close()
 
 
-def get_announcements_for_stock(stock_code: str, days: int = 30) -> list[dict]:
+def get_announcements_for_stock(stock_code: str, days: int = 30) -> list[dict[str, Any]]:
     """获取指定股票的公告列表（供 Web 仪表盘使用）"""
-    conn = _get_conn()
+    conn: sqlite3.Connection = _get_conn()
     try:
-        rows = conn.execute("""
+        rows: list[tuple[Any, ...]] = conn.execute("""
             SELECT ann_id, stock_code, stock_name, title, ann_date,
                    clean_text, summary, url, attach_url, first_seen_at, ann_type_tag, ann_type_category
             FROM announcements
@@ -305,11 +306,11 @@ def get_announcements_for_stock(stock_code: str, days: int = 30) -> list[dict]:
         conn.close()
 
 
-def get_records_needing_clean() -> list[dict]:
+def get_records_needing_clean() -> list[dict[str, Any]]:
     """获取有原始全文但尚无清洗文本的记录"""
-    conn = _get_conn()
+    conn: sqlite3.Connection = _get_conn()
     try:
-        rows = conn.execute(
+        rows: list[tuple[Any, ...]] = conn.execute(
             "SELECT ann_id, stock_code, stock_name, title, art_code, notice_id, url, ann_date, full_text "
             "FROM announcements WHERE full_text IS NOT NULL AND full_text != '' "
             "AND (clean_text IS NULL OR clean_text = '')"
@@ -326,10 +327,10 @@ def get_records_needing_clean() -> list[dict]:
         conn.close()
 
 
-def get_pending_content() -> list[dict]:
-    conn = _get_conn()
+def get_pending_content() -> list[dict[str, Any]]:
+    conn: sqlite3.Connection = _get_conn()
     try:
-        rows = conn.execute(
+        rows: list[tuple[Any, ...]] = conn.execute(
             "SELECT ann_id, stock_code, stock_name, title, art_code, notice_id, url, ann_date "
             "FROM announcements WHERE (full_text IS NULL OR full_text = '') AND art_code != ''"
         ).fetchall()
@@ -345,11 +346,11 @@ def get_pending_content() -> list[dict]:
         conn.close()
 
 
-def prune_empty():
+def prune_empty() -> int:
     """删除被过滤的无效记录（status='filtered' 且无正文）"""
-    conn = _get_conn()
+    conn: sqlite3.Connection = _get_conn()
     try:
-        deleted = conn.execute(
+        deleted: int = conn.execute(
             "DELETE FROM announcements WHERE status = 'filtered' AND (full_text IS NULL OR full_text = '')"
         ).rowcount
         conn.commit()
@@ -361,7 +362,7 @@ def prune_empty():
 
 
 def _count_by_source(keyword: str) -> int:
-    conn = _get_conn()
+    conn: sqlite3.Connection = _get_conn()
     try:
         return conn.execute(
             "SELECT COUNT(*) FROM announcements WHERE url LIKE ?", (f"%{keyword}%",)
@@ -370,17 +371,17 @@ def _count_by_source(keyword: str) -> int:
         conn.close()
 
 
-def get_stats() -> dict:
-    conn = _get_conn()
+def get_stats() -> dict[str, Any]:
+    conn: sqlite3.Connection = _get_conn()
     try:
-        total = conn.execute("SELECT COUNT(*) FROM announcements").fetchone()[0]
-        with_text = conn.execute(
+        total: int = conn.execute("SELECT COUNT(*) FROM announcements").fetchone()[0]
+        with_text: int = conn.execute(
             "SELECT COUNT(*) FROM announcements WHERE full_text IS NOT NULL AND full_text != ''"
         ).fetchone()[0]
-        stocks = conn.execute(
+        stocks: int = conn.execute(
             "SELECT COUNT(DISTINCT stock_code) FROM announcements WHERE stock_code != ''"
         ).fetchone()[0]
-        latest = conn.execute(
+        latest: str = conn.execute(
             "SELECT MAX(first_seen_at) FROM announcements"
         ).fetchone()[0] or "无"
         return {
@@ -393,21 +394,21 @@ def get_stats() -> dict:
         conn.close()
 
 
-def list_announcements(stock_code: str = None, stock_codes: list[str] = None, days: int = None, limit: int = 100) -> list[dict]:
-    conn = _get_conn()
+def list_announcements(stock_code: Optional[str] = None, stock_codes: Optional[list[str]] = None, days: Optional[int] = None, limit: int = 100) -> list[dict[str, Any]]:
+    conn: sqlite3.Connection = _get_conn()
     try:
-        sql = (
+        sql: str = (
             "SELECT ann_id, stock_code, stock_name, title, ann_date, ann_type, "
             "url, art_code, full_text, attach_url, first_seen_at FROM announcements"
         )
-        conditions = []
-        params = []
+        conditions: list[str] = []
+        params: list[Any] = []
 
         if stock_code:
             conditions.append("stock_code = ?")
             params.append(stock_code)
         elif stock_codes:
-            placeholders = ",".join("?" for _ in stock_codes)
+            placeholders: str = ",".join("?" for _ in stock_codes)
             conditions.append(f"stock_code IN ({placeholders})")
             params.extend(stock_codes)
 
@@ -421,7 +422,7 @@ def list_announcements(stock_code: str = None, stock_codes: list[str] = None, da
         sql += " ORDER BY first_seen_at DESC LIMIT ?"
         params.append(limit)
 
-        rows = conn.execute(sql, params).fetchall()
+        rows: list[tuple[Any, ...]] = conn.execute(sql, params).fetchall()
         return [
             {
                 "ann_id": r[0], "stock_code": r[1], "stock_name": r[2],
@@ -436,28 +437,28 @@ def list_announcements(stock_code: str = None, stock_codes: list[str] = None, da
         conn.close()
 
 
-def get_announcements_with_summary(stock_codes: list[str] = None, days: int = 1) -> list[dict]:
+def get_announcements_with_summary(stock_codes: Optional[list[str]] = None, days: int = 1) -> list[dict[str, Any]]:
     """获取有摘要的有价值公告（供 digest 输出使用）"""
-    conn = _get_conn()
+    conn: sqlite3.Connection = _get_conn()
     try:
-        sql = (
+        sql: str = (
             "SELECT stock_code, stock_name, title, ann_date, summary, ann_type_tag, ann_type_category "
             "FROM announcements "
             "WHERE status = 'valuable' AND summary IS NOT NULL AND summary != '' "
             "AND ann_date >= date('now', ? || ' days') "
             "ORDER BY ann_date DESC, stock_code"
         )
-        params = [f"-{days}"]
+        params: list[Any] = [f"-{days}"]
 
         if stock_codes:
-            placeholders = ",".join("?" for _ in stock_codes)
+            placeholders: str = ",".join("?" for _ in stock_codes)
             sql = sql.replace(
                 "AND ann_date >= date('now', ? || ' days') ",
                 f"AND stock_code IN ({placeholders}) AND ann_date >= date('now', ? || ' days') ",
             )
             params = stock_codes + params
 
-        rows = conn.execute(sql, params).fetchall()
+        rows: list[tuple[Any, ...]] = conn.execute(sql, params).fetchall()
         return [
             {
                 "stock_code": r[0], "stock_name": r[1],
