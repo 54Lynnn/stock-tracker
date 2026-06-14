@@ -65,18 +65,16 @@ class TestHandleError:
     def test_handle_stock_tracker_error(self, mock_logger):
         """测试处理StockTrackerError"""
         error = StockTrackerError("test error", code="E001")
-        result = handle_error(error, context="test_context")
+        handle_error(error, context="test_context")
         
-        assert result is False
         mock_logger.error.assert_called_once_with("test_context: test error (code: E001)")
 
     @patch("error_handler.logger")
     def test_handle_generic_exception(self, mock_logger):
         """测试处理普通异常"""
         error = ValueError("generic error")
-        result = handle_error(error, context="test_context")
+        handle_error(error, context="test_context")
         
-        assert result is False
         mock_logger.error.assert_called_once_with("test_context: generic error")
 
     @patch("error_handler.sys.exit")

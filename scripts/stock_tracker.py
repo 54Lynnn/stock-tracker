@@ -289,69 +289,68 @@ def _save_announcements(anns_to_save: list[dict[str, Any]], parsed: argparse.Nam
 
 def handle_main_flow(parsed: argparse.Namespace) -> None:
     """处理主流程：获取公告、过滤、入库"""
-    try:
-        config_manager: ConfigManager = ConfigManager(parsed.config)
-        config: AppConfig = config_manager.load()
-        
-        # 获取LLM API Key
-        api_key: Optional[str] = config_manager.get_llm_api_key()
-        
-        # 初始化LLM判断器
-        llm_judge: Any = LLMJudge(
-            api_key=api_key or "",
-            base_url=config.llm.base_url,
-            model=config.llm.model,
-            enabled=config.llm.enabled,
-            timeout=config.llm.timeout,
-            retries=config.llm.retries,
-        )
-        
-        days: int = parsed.days or config.fetch_interval_days
+    config_manager: ConfigManager = ConfigManager(parsed.config)
+    config: AppConfig = config_manager.load()
+    
+    # 获取LLM API Key
+    api_key: Optional[str] = config_manager.get_llm_api_key()
+    
+    # 初始化LLM判断器
+    llm_judge: Any = LLMJudge(
+        api_key=api_key or "",
+        base_url=config.llm.base_url,
+        model=config.llm.model,
+        enabled=config.llm.enabled,
+        timeout=config.llm.timeout,
+        retries=config.llm.retries,
+    )
+    
+    days: int = parsed.days or config.fetch_interval_days
 
-        if parsed.fetch_content:
-            handle_fetch_content(parsed, llm_judge)
-            if not parsed.group:
-                return
+    if parsed.fetch_content:
+        handle_fetch_content(parsed, llm_judge)
+        if not parsed.group:
+            return
 
-        logger.info("=" * 50)
-        logger.info("自选股公告追踪 - 开始运行")
-        logger.info("=" * 50)
-        logger.info("数据来源: %s", "巨潮+A股 / 东方财富+港股" if parsed.source == "cninfo" else "东方财富")
-        logger.info("抓取窗口: 最近 %d 天", days)
-        if parsed.group:
-            logger.info("筛选分组: %s", parsed.group)
+    logger.info("=" * 50)
+    logger.info("自选股公告追踪 - 开始运行")
+    logger.info("=" * 50)
+    logger.info("数据来源: %s", "巨潮+A股 / 东方财富+港股" if parsed.source == "cninfo" else "东方财富")
+    logger.info("抓取窗口: 最近 %d 天", days)
+    if parsed.group:
+        logger.info("筛选分组: %s", parsed.group)
 
-        cookie: Optional[str] = load_cookie(DEFAULT_COOKIE)
-        stocks: list[dict[str, Any]] = get_stocks(DEFAULT_COOKIE, group_name=parsed.group)
-        if not stocks:
-            raise DataError("未获取到自选股列表，请检查 cookie.txt 或 config.json")
+    cookie: Optional[str] = load_cookie(DEFAULT_COOKIE)
+    stocks: list[dict[str, Any]] = get_stocks(DEFAULT_COOKIE, group_name=parsed.group)
+    if not stocks:
+        raise DataError("未获取到自选股列表，请检查 cookie.txt 或 config.json")
 
-        logger.info("自选股共 %d 只:", len(stocks))
-        for s in stocks:
-            logger.info("  - %s (%s)", s["name"], s["code"])
+    logger.info("自选股共 %d 只:", len(stocks))
+    for s in stocks:
+        logger.info("  - %s (%s)", s["name"], s["code"])
 
-        anns: list[dict[str, Any]] = _fetch_announcements(parsed, stocks, cookie, days)
-        logger.info("共获取 %d 条公告", len(anns))
+    anns: list[dict[str, Any]] = _fetch_announcements(parsed, stocks, cookie, days)
+    logger.info("共获取 %d 条公告", len(anns))
 
-        seen_ids: set[str] = db.get_seen_ids() if not parsed.force else set()
+    seen_ids: set[str] = db.get_seen_ids() if not parsed.force else set()
 
-        new_anns: list[dict[str, Any]] = [ann for ann in anns if db.make_ann_id(ann) not in seen_ids]
+    new_anns: list[dict[str, Any]] = [ann for ann in anns if db.make_ann_id(ann) not in seen_ids]
 
-        if new_anns:
-            logger.info("发现 %d 条新公告！", len(new_anns))
-            send_notification(config, new_anns)
-        else:
-            logger.info("暂无新公告")
+    if new_anns:
+        logger.info("发现 %d 条新公告！", len(new_anns))
+        send_notification(config, new_anns)
+    else:
+        logger.info("暂无新公告")
 
-        anns_to_save: list[dict[str, Any]] = anns if parsed.force else new_anns
-        if not parsed.dry_run and anns_to_save:
-            _save_announcements(anns_to_save, parsed, llm_judge)
-        elif not parsed.dry_run and not anns_to_save:
-            stats: dict[str, Any] = db.get_stats()
-            logger.info("状态已保存（数据库共 %d 条，含正文 %d 条）",
-                        stats["total"], stats["with_content"])
+    anns_to_save: list[dict[str, Any]] = anns if parsed.force else new_anns
+    if not parsed.dry_run and anns_to_save:
+        _save_announcements(anns_to_save, parsed, llm_judge)
+    elif not parsed.dry_run and not anns_to_save:
+        stats: dict[str, Any] = db.get_stats()
+        logger.info("状态已保存（数据库共 %d 条，含正文 %d 条）",
+                    stats["total"], stats["with_content"])
 
-        logger.info("运行完成\n")
+    logger.info("运行完成\n")
 
 
 def run(args: Optional[list[str]] = None) -> None:

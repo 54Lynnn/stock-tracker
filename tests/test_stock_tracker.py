@@ -4,6 +4,7 @@
 import sys
 import os
 from unittest.mock import patch, MagicMock
+import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
@@ -18,6 +19,7 @@ from stock_tracker import (
     run,
     _backup_database,
 )
+from error_handler import DataError
 
 
 class TestDispatcher:
@@ -272,14 +274,14 @@ class TestHandleMainFlow:
             patch("stock_tracker.LLMJudge") as mock_llm_cls,
             patch("stock_tracker.load_cookie"),
             patch("stock_tracker.get_stocks", return_value=[]),
-            patch("stock_tracker.sys.exit") as mock_exit,
         ):
             mock_config = MagicMock()
             mock_config.fetch_interval_days = 7
             mock_config_mgr_cls.return_value.load.return_value = mock_config
             mock_llm_cls.from_config.return_value = MagicMock()
-            handle_main_flow(mock_parsed)
-            mock_exit.assert_called_once_with(1)
+            with pytest.raises(DataError) as exc_info:
+                handle_main_flow(mock_parsed)
+            assert "未获取到自选股列表" in str(exc_info.value)
 
     def test_dry_run_saves_nothing(self):
         mock_parsed = MagicMock()
