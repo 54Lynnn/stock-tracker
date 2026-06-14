@@ -24,11 +24,10 @@ from datetime import datetime, timedelta
 
 import requests
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dependencies import get_db, get_llm_judge
+from dependencies import get_db, get_llm_judge, get_llm_judge_api_key
 
 db = get_db()
-from llm_judge import _load_env_key
+_load_env_key = get_llm_judge_api_key()
 
 logger = logging.getLogger("daily_summary")
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
