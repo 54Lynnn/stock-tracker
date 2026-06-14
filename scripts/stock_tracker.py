@@ -32,6 +32,7 @@ from datetime import datetime
 
 from dependencies import get_db, get_llm_judge, get_text_cleaner, get_ann_detail, get_eastmoney_api, get_cninfo_api
 from error_handler import DatabaseError, APIError, ConfigError, CookieError, handle_error, safe_execute
+from config_manager import ConfigManager, AppConfig, NotifyConfig
 
 db = get_db()
 LLMJudge = get_llm_judge()
@@ -102,12 +103,12 @@ def load_config(path: str = DEFAULT_CONFIG) -> dict:
     return default
 
 
-def send_notification(config: dict, new_anns: list[dict]):
-    notify_type = config.get("notify", {}).get("type", "terminal")
+def send_notification(config: AppConfig, new_anns: list[dict]):
+    notify_type = config.notify.type
     if notify_type == "terminal":
         _notify_terminal(new_anns)
     elif notify_type == "webhook":
-        _notify_webhook(config["notify"], new_anns)
+        _notify_webhook(config.notify, new_anns)
     else:
         _notify_terminal(new_anns)
 
@@ -118,10 +119,10 @@ def _notify_terminal(new_anns: list[dict]):
     logger.info("发现 %d 条新公告（已入库）", len(new_anns))
 
 
-def _notify_webhook(notify_cfg: dict, new_anns: list[dict]):
+def _notify_webhook(notify_cfg: NotifyConfig, new_anns: list[dict]):
     import requests as req
 
-    url = notify_cfg.get("webhook_url", "")
+    url = notify_cfg.webhook_url
     if not url:
         logger.warning("Webhook URL 未配置")
         return
@@ -303,9 +304,23 @@ def _save_announcements(anns_to_save, parsed, llm_judge):
 def handle_main_flow(parsed):
     """处理主流程：获取公告、过滤、入库"""
     try:
-        config = load_config(parsed.config)
-        llm_judge = LLMJudge.from_config(config)
-        days = parsed.days or config.get("fetch_interval_days", 7)
+        config_manager = ConfigManager(parsed.config)
+        config = config_manager.load()
+        
+        # 获取LLM API Key
+        api_key = config_manager.get_llm_api_key()
+        
+        # 初始化LLM判断器
+        llm_judge = LLMJudge(
+            api_key=api_key or "",
+            base_url=config.llm.base_url,
+            model=config.llm.model,
+            enabled=config.llm.enabled,
+            timeout=config.llm.timeout,
+            retries=config.llm.retries,
+        )
+        
+        days = parsed.days or config.fetch_interval_days
 
         if parsed.fetch_content:
             handle_fetch_content(parsed, llm_judge)

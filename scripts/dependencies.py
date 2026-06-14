@@ -46,6 +46,4 @@ def get_daily_summary():
     return daily_summary
 
 
-def get_llm_judge_api_key():
-    from llm_judge import _load_env_key
-    return _load_env_key
+

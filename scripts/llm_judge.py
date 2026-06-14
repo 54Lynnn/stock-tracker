@@ -15,41 +15,12 @@ from typing import Optional
 import requests
 
 from error_handler import APIError, handle_error
+from config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gpt-4o-mini"
 DEFAULT_TIMEOUT = 30
-
-_ENV_PATH = None
-
-
-def _get_env_path() -> str:
-    global _ENV_PATH
-    if _ENV_PATH is None:
-        _ENV_PATH = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"
-        )
-    return _ENV_PATH
-
-
-def _load_env_key(key: str) -> Optional[str]:
-    path = _get_env_path()
-    if not os.path.exists(path):
-        return None
-    try:
-        with open(path, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line.startswith("#") or "=" not in line:
-                    continue
-                k, _, v = line.partition("=")
-                if k.strip() == key:
-                    val = v.strip().strip("\"'")
-                    return val if val else None
-    except (OSError, UnicodeDecodeError) as e:
-        logger.debug("读取 .env 失败: %s", e)
-    return None
 
 # A股公告分类：大类 -> 小类列表
 A_CATEGORY_MAP = {
@@ -292,11 +263,13 @@ class LLMJudge:
         api_key 优先从 .env 文件读取（LLM_API_KEY 变量），
         config.json 中不再存储敏感信息。
         """
-        llm_cfg = config.get("llm", {})
-        if not llm_cfg.get("enabled", False):
+        config_manager = ConfigManager()
+        app_config = config_manager.load()
+        
+        if not app_config.llm.enabled:
             return cls(api_key="", enabled=False)
 
-        api_key = _load_env_key("LLM_API_KEY")
+        api_key = config_manager.get_llm_api_key()
         if not api_key:
             logger.warning(
                 "LLM 已启用但 .env 中未配置 LLM_API_KEY，已自动禁用"
@@ -305,9 +278,9 @@ class LLMJudge:
 
         return cls(
             api_key=api_key,
-            base_url=llm_cfg.get("base_url", "https://api.openai.com/v1"),
-            model=llm_cfg.get("model", DEFAULT_MODEL),
+            base_url=app_config.llm.base_url,
+            model=app_config.llm.model,
             enabled=True,
-            timeout=llm_cfg.get("timeout", DEFAULT_TIMEOUT),
-            retries=llm_cfg.get("retries", 2),
+            timeout=app_config.llm.timeout,
+            retries=app_config.llm.retries,
         )

@@ -24,10 +24,10 @@ from datetime import datetime, timedelta
 
 import requests
 
-from dependencies import get_db, get_llm_judge, get_llm_judge_api_key
+from dependencies import get_db, get_llm_judge
+from config_manager import ConfigManager
 
 db = get_db()
-_load_env_key = get_llm_judge_api_key()
 
 logger = logging.getLogger("daily_summary")
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,15 +35,22 @@ BATCH_SIZE = 1  # 每批处理的公告数
 
 
 def load_config() -> dict:
-    path = os.path.join(SKILL_DIR, "config.json")
-    default = {"notify": {"type": "terminal"}}
-    if os.path.exists(path):
-        try:
-            with open(path) as f:
-                default.update(json.load(f))
-        except (OSError, json.JSONDecodeError):
-            pass
-    return default
+    config_manager = ConfigManager()
+    config = config_manager.load()
+    return {
+        "llm": {
+            "enabled": config.llm.enabled,
+            "base_url": config.llm.base_url,
+            "model": config.llm.model,
+            "timeout": config.llm.timeout,
+            "retries": config.llm.retries,
+        },
+        "notify": {
+            "type": config.notify.type,
+            "webhook_url": config.notify.webhook_url,
+        },
+        "fetch_interval_days": config.fetch_interval_days,
+    }
 
 
 def get_unsummarized_announcements(hours: int = None, stock_codes: list[str] = None) -> list[dict]:
@@ -198,16 +205,16 @@ def build_summary_prompt(announcements: list[dict]) -> str:
 
 def call_llm(prompt: str, max_tokens: int = 10000, json_mode: bool = False, retries: int = 2) -> str:
     """调用 LLM"""
-    api_key = _load_env_key("LLM_API_KEY")
+    config_manager = ConfigManager()
+    api_key = config_manager.get_llm_api_key()
     if not api_key:
         logger.warning("LLM_API_KEY 未配置")
         return ""
 
-    config = load_config()
-    llm_cfg = config.get("llm", {})
-    base_url = llm_cfg.get("base_url", "https://opencode.ai/zen/go/v1")
-    model = llm_cfg.get("model", "deepseek-v4-flash")
-    timeout = llm_cfg.get("timeout", 60)
+    config = config_manager.load()
+    base_url = config.llm.base_url
+    model = config.llm.model
+    timeout = config.llm.timeout
 
     payload = {
         "model": model,
