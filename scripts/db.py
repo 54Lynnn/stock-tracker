@@ -99,7 +99,19 @@ def _get_conn() -> sqlite3.Connection:
 
 
 def _migrate_schema(conn: sqlite3.Connection) -> None:
-    for col, col_def in [("full_text", "TEXT"), ("clean_text", "TEXT"), ("attach_url", "TEXT"), ("summary", "TEXT"), ("status", "TEXT DEFAULT 'valuable'"), ("ann_type_tag", "TEXT DEFAULT ''"), ("ann_type_category", "TEXT DEFAULT ''"), ("clean_text_length", "INTEGER DEFAULT 0"), ("display_time_dfcf", "TEXT")]:
+    """自动迁移数据库表结构，新增缺失字段"""
+    columns_to_add: list[tuple[str, str]] = [
+        ("full_text", "TEXT"),
+        ("clean_text", "TEXT"),
+        ("attach_url", "TEXT"),
+        ("summary", "TEXT"),
+        ("status", "TEXT DEFAULT 'valuable'"),
+        ("ann_type_tag", "TEXT DEFAULT ''"),
+        ("ann_type_category", "TEXT DEFAULT ''"),
+        ("clean_text_length", "INTEGER DEFAULT 0"),
+        ("display_time_dfcf", "TEXT"),
+    ]
+    for col, col_def in columns_to_add:
         try:
             conn.execute(f"ALTER TABLE announcements ADD COLUMN {col} {col_def}")
             logger.info("数据库迁移: 新增字段 %s", col)
@@ -196,6 +208,9 @@ def record_announcements(announcements: list[dict[str, Any]]) -> None:
             count += 1
         conn.commit()
         logger.info("已记录 %d 条公告到数据库", count)
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -216,6 +231,9 @@ def update_content(announcements: list[dict[str, Any]]) -> None:
         conn.commit()
         if count:
             logger.info("已更新 %d 条公告正文", count)
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -235,6 +253,9 @@ def update_clean_text(announcements: list[dict[str, Any]]) -> None:
         conn.commit()
         if count:
             logger.info("已清洗 %d 条公告", count)
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -247,6 +268,9 @@ def update_summary(ann_id: str, summary: str) -> None:
     try:
         conn.execute(UPDATE_SUMMARY_SQL, (summary, ann_id))
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -362,6 +386,9 @@ def prune_empty() -> int:
         if deleted:
             logger.info("已清理 %d 条被过滤的记录", deleted)
         return deleted
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
