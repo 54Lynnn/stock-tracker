@@ -268,7 +268,7 @@ def _fetch_announcements(parsed: argparse.Namespace, stocks: list[dict[str, Any]
 
 
 def _save_announcements(anns_to_save: list[dict[str, Any]], parsed: argparse.Namespace, llm_judge: Any) -> None:
-    """保存公告到数据库"""
+    """保存公告到数据库，并生成摘要"""
     if parsed.fetch_content:
         logger.info("正在获取 %d 条新公告的全文...", len(anns_to_save))
         fetch_all_contents(anns_to_save, save_batch=db.update_content, batch_size=10, llm_judge=llm_judge)
@@ -286,24 +286,24 @@ def _save_announcements(anns_to_save: list[dict[str, Any]], parsed: argparse.Nam
     if parsed.fetch_content and llm_judge.enabled:
         logger.info(llm_judge.report())
 
+    # 自动生成摘要（对有 clean_text 的有价值公告）
+    try:
+        from daily_summary import generate_announcement_summaries
+        stock_codes = list({a["stock_code"] for a in anns_to_save if a.get("stock_code")})
+        summaries = generate_announcement_summaries(stock_codes=stock_codes)
+        if summaries:
+            logger.info("已为 %d 条公告生成摘要", len(summaries))
+    except Exception as e:
+        logger.warning("摘要生成失败（不影响主流程）: %s", e)
+
 
 def handle_main_flow(parsed: argparse.Namespace) -> None:
     """处理主流程：获取公告、过滤、入库"""
     config_manager: ConfigManager = ConfigManager(parsed.config)
     config: AppConfig = config_manager.load()
     
-    # 获取LLM API Key
-    api_key: Optional[str] = config_manager.get_llm_api_key()
-    
-    # 初始化LLM判断器
-    llm_judge: Any = LLMJudge(
-        api_key=api_key or "",
-        base_url=config.llm.base_url,
-        model=config.llm.model,
-        enabled=config.llm.enabled,
-        timeout=config.llm.timeout,
-        retries=config.llm.retries,
-    )
+    # 初始化LLM判断器（使用统一的 from_config 工厂方法）
+    llm_judge: Any = LLMJudge.from_config(config)
     
     days: int = parsed.days or config.fetch_interval_days
 
