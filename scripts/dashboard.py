@@ -10,9 +10,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flask import Flask, jsonify, render_template_string
+from flask import Flask, jsonify, render_template_string, Response
 import db
+import csv
+import io
 import html
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -90,6 +93,7 @@ HTML_TEMPLATE = """
   <h1>AI 公告雷达</h1>
   <div class="sub">数据来源：东财 / 巨潮资讯</div>
   <div class="search-box"><input type="text" id="searchInput" placeholder="搜索股票代码或名称..." oninput="filterStocks(this.value)"></div>
+  <a href="/api/export/csv" style="position:absolute;top:50%;right:268px;transform:translateY(-50%);background:rgba(255,255,255,0.25);color:white;padding:7px 14px;border-radius:20px;font-size:13px;text-decoration:none;backdrop-filter:blur(4px);">导出 CSV</a>
 </div>
 <div class="stock-float-bar" id="floatBar" onclick="toggleFloatBar()">
   <div><span class="stock-name" id="floatName"></span><span class="stock-code" id="floatCode"></span></div>
@@ -279,6 +283,26 @@ def api_announcements(stock_code):
         item["ann_type_category"] = html.escape(item.get("ann_type_category") or "")
         item["ann_type_tag"] = html.escape(item.get("ann_type_tag") or "")
     return jsonify(data)
+
+
+@app.route("/api/export/csv")
+def export_csv():
+    data = db.get_all_valuable_announcements(days=30)
+    output = io.StringIO()
+    output.write('\ufeff')  # BOM for Excel
+    writer = csv.writer(output)
+    writer.writerow(["股票代码", "股票名称", "公告标题", "公告日期", "大类", "小类", "摘要", "链接"])
+    for ann in data:
+        writer.writerow([
+            ann["stock_code"], ann["stock_name"], ann["title"],
+            ann["ann_date"], ann["ann_type_category"], ann["ann_type_tag"],
+            ann["summary"], ann["url"],
+        ])
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=announcements_{datetime.now().strftime('%Y%m%d')}.csv"},
+    )
 
 
 if __name__ == "__main__":

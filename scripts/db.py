@@ -335,6 +335,32 @@ def get_announcements_for_stock(stock_code: str, days: int = 30) -> list[dict[st
         conn.close()
 
 
+def get_all_valuable_announcements(days: int = 30) -> list[dict[str, Any]]:
+    """获取所有有价值的公告（供 CSV 导出使用）"""
+    conn: sqlite3.Connection = _get_conn()
+    try:
+        rows: list[tuple[Any, ...]] = conn.execute("""
+            SELECT stock_code, stock_name, title, ann_date, ann_type_tag,
+                   ann_type_category, summary, url, clean_text, display_time_dfcf
+            FROM announcements
+            WHERE ann_date >= date('now', ? || ' days')
+              AND status = 'valuable'
+            ORDER BY ann_date DESC
+        """, (f"-{days}",)).fetchall()
+        return [
+            {
+                "stock_code": r[0], "stock_name": r[1], "title": r[2],
+                "ann_date": r[3], "ann_type_tag": r[4] or "",
+                "ann_type_category": r[5] or "", "summary": r[6] or "",
+                "url": r[7] or "", "clean_text": r[8] or "",
+                "display_time_dfcf": r[9] or "",
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
 def get_records_needing_clean() -> list[dict[str, Any]]:
     """获取有原始全文但尚无清洗文本的记录"""
     conn: sqlite3.Connection = _get_conn()
