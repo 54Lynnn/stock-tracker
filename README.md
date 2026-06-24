@@ -62,7 +62,7 @@ bash run.sh mygroup 15 eastmoney
 bash dashboard.sh mygroup 15 eastmoney
 ```
 
-自动执行：抓取 → 摘要 → 启动 Web 仪表盘（`http://localhost:5001`），Ctrl+C 停止。
+自动执行：抓取 → 摘要 → 启动 Web 仪表盘（`http://localhost:5001`），支持 CSV 导出，Ctrl+C 停止。
 
 ---
 

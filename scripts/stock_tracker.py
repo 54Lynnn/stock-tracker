@@ -288,11 +288,12 @@ def _save_announcements(anns_to_save: list[dict[str, Any]], parsed: argparse.Nam
 
     # 自动生成摘要（对有 clean_text 的有价值公告）
     try:
-        from daily_summary import generate_announcement_summaries
+        from daily_summary import get_unsummarized_announcements, generate_summaries
         stock_codes = list({a["stock_code"] for a in anns_to_save if a.get("stock_code")})
-        summaries = generate_announcement_summaries(stock_codes=stock_codes)
-        if summaries:
-            logger.info("已为 %d 条公告生成摘要", len(summaries))
+        unsummarized = get_unsummarized_announcements(stock_codes=stock_codes)
+        if unsummarized:
+            summaries = generate_summaries(unsummarized)
+            logger.info("已为 %d 条公告生成摘要", summaries)
     except Exception as e:
         logger.warning("摘要生成失败（不影响主流程）: %s", e)
 
