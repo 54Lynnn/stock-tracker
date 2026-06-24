@@ -1,6 +1,6 @@
 ---
 name: "stock-tracker"
-version: "2.1.0"
+version: "2.2.0"
 description: "东方财富自选股公告追踪。三级过滤 + LLM分类摘要 + Web仪表盘，支持 agent 定时推送。"
 metadata:
   {
@@ -82,10 +82,9 @@ DIGEST_EMPTY:最近1天test板块无高价值公告
 bash dashboard.sh mygroup 15 eastmoney
 ```
 
-脚本自动执行三步：
-1. `stock_tracker.py --fetch-content` — 抓取公告 + 全文 + LLM 分类
-2. `daily_summary.py` — 生成摘要
-3. `dashboard.py` — 启动 Flask 仪表盘（默认端口 5001）
+脚本自动执行一步（摘要已集成到主流程）：
+1. `stock_tracker.py --fetch-content` — 抓取公告 + 全文 + LLM 分类 + 自动生成摘要
+2. `dashboard.py` — 启动 Flask 仪表盘（默认端口 5001）
 
 启动后浏览器访问 `http://localhost:5001`，按 Ctrl+C 停止。
 
@@ -94,6 +93,7 @@ bash dashboard.sh mygroup 15 eastmoney
 - 点击展开：懒加载公告详情（标题、日期、摘要、正文、原文链接）
 - 类型标签：`大类 / 小类`（如 `股权股本类 / 回购`）
 - 搜索过滤，响应式设计
+- CSV 导出：点击右上角「导出 CSV」下载近 30 天有价值公告
 
 ---
 
