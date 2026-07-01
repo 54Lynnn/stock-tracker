@@ -62,6 +62,13 @@ SKIP_CONTENT_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"限制性股票.*(?:预留授予|完成登记)|股票期权.*(?:预留授予|完成登记)", re.IGNORECASE),
     # 限制性股票作废（量小无市场影响）
     re.compile(r"作废.*限制性股票|限制性股票.*作废", re.IGNORECASE),
+    # 质押展期/解除质押（流程性公告，不再提醒）
+    re.compile(r"质押.*展期|控股股东.*质押展期|质押展期", re.IGNORECASE),
+    re.compile(r"解除质押|解除.*质押", re.IGNORECASE),
+    # 可转债审计报告（程序性公告，无市场影响）
+    re.compile(r"可转债.*审计报告|审计报告.*可转债", re.IGNORECASE),
+    # 公司理财产品（结构性存款到期、购买理财等，无实质影响）
+    re.compile(r"结构性存款.*到期|到期.*赎回|购买.*理财产品|理财产品.*购买|购买.*信托|信托.*购买", re.IGNORECASE),
 ]
 PDF_BASE: str = "https://pdf.dfcfw.com/pdf/H2_{art_code}_1.pdf"
 HEADERS: dict[str, str] = {
