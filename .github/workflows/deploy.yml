@@ -1,0 +1,44 @@
+name: Deploy Stock Tracker
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, wsl]
+    defaults:
+      run:
+        working-directory: /home/administrator/actions-runner/_work/stock-tracker/stock-tracker
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install frontend dependencies
+        working-directory: /home/administrator/actions-runner/_work/stock-tracker/stock-tracker/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: /home/administrator/actions-runner/_work/stock-tracker/stock-tracker/frontend
+        run: npm run build
+
+      - name: Deploy static files
+        run: |
+          rm -rf /home/administrator/.openclaw/workspace/skills/stock-tracker/static/dashboard/*
+          cp -r /home/administrator/actions-runner/_work/stock-tracker/stock-tracker/static/dashboard/* /home/administrator/.openclaw/workspace/skills/stock-tracker/static/dashboard/
+
+      - name: Restart stock-tracker service
+        run: systemctl --user restart stock-tracker
+
+      - name: Verify service status
+        run: |
+          sleep 2
+          systemctl --user status stock-tracker --no-pager
